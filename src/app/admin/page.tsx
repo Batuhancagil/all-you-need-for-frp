@@ -1,0 +1,161 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+
+type ApiResponse<T> = {
+  data: T | null;
+  error: { code: string; message: string } | null;
+};
+
+type Room = {
+  id: string;
+  name: string;
+  privacy: "public" | "private";
+  inviteCode: string;
+  sessionState: "waiting" | "active" | "ended";
+};
+
+export default function AdminPage() {
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [metrics, setMetrics] = useState<{ sessionsStarted: number; sessionsEnded: number; uniqueParticipants: number } | null>(null);
+  const [roomNamePrefix, setRoomNamePrefix] = useState("");
+  const [privacy, setPrivacy] = useState<"private" | "public">("private");
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    setIsAdmin(localStorage.getItem("aynfrp:isAdmin") === "true");
+  }, []);
+
+  useEffect(() => {
+    async function loadRooms() {
+      const res = await fetch("/api/admin/rooms");
+      const payload = (await res.json()) as ApiResponse<{ rooms: Room[] }>;
+      if (payload.data) {
+        setRooms(payload.data.rooms);
+      }
+    }
+
+    async function loadDefaults() {
+      const res = await fetch("/api/admin/defaults");
+      const payload = (await res.json()) as ApiResponse<{
+        defaults: { roomNamePrefix?: string; privacy?: "private" | "public" };
+      }>;
+      if (payload.data) {
+        setRoomNamePrefix(payload.data.defaults.roomNamePrefix ?? "");
+        setPrivacy(payload.data.defaults.privacy ?? "private");
+      }
+    }
+
+    async function loadMetrics() {
+      const res = await fetch("/api/metrics");
+      const payload = (await res.json()) as ApiResponse<{
+        metrics: { sessionsStarted: number; sessionsEnded: number; uniqueParticipants: number };
+      }>;
+      if (payload.data) {
+        setMetrics(payload.data.metrics);
+      }
+    }
+
+    loadRooms();
+    loadDefaults();
+    loadMetrics();
+  }, []);
+
+  async function saveDefaults() {
+    await fetch("/api/admin/defaults", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ roomNamePrefix, privacy }),
+    });
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className="min-h-screen bg-zinc-50 px-6 py-16 text-zinc-900">
+        <h1 className="text-2xl font-semibold">Admin access required</h1>
+        <p className="mt-2 text-sm text-zinc-600">
+          Enable admin mode from the Join page to access admin tools.
+        </p>
+        <Link className="mt-4 inline-flex text-sm text-zinc-600 underline" href="/join">
+          Back to join
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-zinc-50 text-zinc-900">
+      <main className="mx-auto flex w-full max-w-5xl flex-col gap-10 px-6 py-16">
+        <header>
+          <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Admin</p>
+          <h1 className="text-3xl font-semibold">Room organization</h1>
+        </header>
+
+        <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-semibold">Defaults</h2>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <label className="text-sm font-semibold text-zinc-600">
+              Room name prefix
+              <input
+                className="mt-2 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                value={roomNamePrefix}
+                onChange={(event) => setRoomNamePrefix(event.target.value)}
+              />
+            </label>
+            <label className="text-sm font-semibold text-zinc-600">
+              Default privacy
+              <select
+                className="mt-2 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                value={privacy}
+                onChange={(event) => setPrivacy(event.target.value as "private" | "public")}
+              >
+                <option value="private">Private</option>
+                <option value="public">Public</option>
+              </select>
+            </label>
+          </div>
+          <button
+            className="mt-4 rounded-full bg-zinc-900 px-4 py-2 text-xs font-semibold text-white"
+            onClick={saveDefaults}
+          >
+            Save defaults
+          </button>
+        </section>
+
+        <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-semibold">Rooms</h2>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {rooms.length === 0 ? (
+              <p className="text-sm text-zinc-500">No rooms created yet.</p>
+            ) : (
+              rooms.map((room) => (
+                <div
+                  key={room.id}
+                  className="rounded-xl border border-zinc-200 px-4 py-3 text-sm"
+                >
+                  <p className="font-semibold">{room.name}</p>
+                  <p className="mt-1 text-xs text-zinc-500">Invite: {room.inviteCode}</p>
+                  <p className="mt-1 text-xs text-zinc-500">State: {room.sessionState}</p>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-semibold">Metrics</h2>
+          {metrics ? (
+            <div className="mt-3 space-y-2 text-sm text-zinc-600">
+              <p>Sessions started: {metrics.sessionsStarted}</p>
+              <p>Sessions ended: {metrics.sessionsEnded}</p>
+              <p>Unique participants: {metrics.uniqueParticipants}</p>
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-zinc-500">No metrics yet.</p>
+          )}
+        </section>
+      </main>
+    </div>
+  );
+}
