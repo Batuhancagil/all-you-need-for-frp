@@ -37,7 +37,7 @@ export default function RoomPage() {
     name: string;
     inviteCode: string;
     sessionState: "waiting" | "active" | "ended";
-    gmId: string;
+    gmId: string | null;
     recap: string | null;
   } | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -55,8 +55,14 @@ export default function RoomPage() {
   const [diceError, setDiceError] = useState<string | null>(null);
   const [recapText, setRecapText] = useState("");
   const [recapError, setRecapError] = useState<string | null>(null);
+  const [gmAssignId, setGmAssignId] = useState<string>("");
+  const [gmAssignError, setGmAssignError] = useState<string | null>(null);
 
   const canManageSession = role === "gm" || role === "admin";
+  const gmCandidates = useMemo(
+    () => participants.filter((person) => person.role !== "admin"),
+    [participants]
+  );
 
   useEffect(() => {
     const storedName = localStorage.getItem("aynfrp:lastName");
@@ -228,6 +234,20 @@ export default function RoomPage() {
     const payload = (await res.json()) as ApiResponse<{ recap: string }>;
     if (payload.error) {
       setRecapError(payload.error.message);
+    }
+  }
+
+  async function assignGm() {
+    setGmAssignError(null);
+    if (!participantId || !gmAssignId) return;
+    const res = await fetch(`/api/rooms/${roomId}/gm`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ participantId, gmParticipantId: gmAssignId }),
+    });
+    const payload = (await res.json()) as ApiResponse<{ gmId: string }>;
+    if (payload.error) {
+      setGmAssignError(payload.error.message);
     }
   }
 
@@ -451,7 +471,49 @@ export default function RoomPage() {
                   ))
                 )}
               </div>
+              {room.gmId ? (
+                <p className="mt-3 text-xs text-zinc-500">
+                  Current GM: {participants.find((person) => person.id === room.gmId)?.name ?? "—"}
+                </p>
+              ) : (
+                <p className="mt-3 text-xs text-zinc-500">GM not assigned yet.</p>
+              )}
             </div>
+            {role === "admin" ? (
+              <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-semibold">Assign GM</h2>
+                <p className="text-sm text-zinc-500">
+                  Select a participant to act as DM/GM for this room.
+                </p>
+                <div className="mt-4 flex flex-col gap-3">
+                  <select
+                    className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                    value={gmAssignId}
+                    onChange={(event) => setGmAssignId(event.target.value)}
+                    disabled={gmCandidates.length === 0}
+                  >
+                    <option value="">
+                      {gmCandidates.length === 0 ? "No eligible participants yet" : "Choose GM"}
+                    </option>
+                    {gmCandidates.map((person) => (
+                      <option key={person.id} value={person.id}>
+                        {person.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="inline-flex h-10 items-center justify-center rounded-full bg-zinc-900 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-zinc-300"
+                    onClick={assignGm}
+                    disabled={!gmAssignId}
+                  >
+                    Assign GM
+                  </button>
+                  {gmAssignError ? (
+                    <p className="text-xs text-amber-600">{gmAssignError}</p>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
 
             <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold">Admin</h2>

@@ -29,7 +29,7 @@ export type Room = {
   name: string;
   privacy: RoomPrivacy;
   inviteCode: string;
-  gmId: string;
+  gmId: string | null;
   participants: Record<string, Participant>;
   sessionState: SessionState;
   rolls: Roll[];
@@ -89,7 +89,7 @@ function generateInviteCode() {
   return Math.random().toString(36).slice(2, 8).toUpperCase();
 }
 
-export function createRoom(params: { name: string; privacy?: RoomPrivacy; gmName: string }) {
+export function createRoom(params: { name: string; privacy?: RoomPrivacy; adminName: string }) {
   const store = getStore();
   const defaults = store.adminDefaults;
   const privacy = params.privacy ?? defaults.privacy ?? "private";
@@ -99,25 +99,24 @@ export function createRoom(params: { name: string; privacy?: RoomPrivacy; gmName
     name: `${namePrefix}${params.name}`.trim(),
     privacy,
     inviteCode: generateInviteCode(),
-    gmId: "",
+    gmId: null,
     participants: {},
     sessionState: "waiting",
     rolls: [],
     createdAt: nowIso(),
   };
 
-  const gmParticipant = createParticipant({
-    name: params.gmName,
-    role: "gm",
+  const adminParticipant = createParticipant({
+    name: params.adminName,
+    role: "admin",
   });
-  room.gmId = gmParticipant.id;
-  room.participants[gmParticipant.id] = gmParticipant;
+  room.participants[adminParticipant.id] = adminParticipant;
 
   store.rooms.set(room.id, room);
   store.invites.set(room.inviteCode, room.id);
-  store.metrics.uniqueParticipants.add(gmParticipant.id);
+  store.metrics.uniqueParticipants.add(adminParticipant.id);
 
-  return room;
+  return { room, adminParticipant };
 }
 
 export function getRoom(roomId: string) {
@@ -208,6 +207,23 @@ export function clearRolls(room: Room) {
 
 export function setRecap(room: Room, recap: string) {
   room.recap = recap;
+}
+
+export function setRoomGm(room: Room, participantId: string) {
+  const participant = room.participants[participantId];
+  if (!participant) return null;
+  if (participant.role === "admin") return null;
+
+  if (room.gmId && room.gmId !== participantId) {
+    const previousGm = room.participants[room.gmId];
+    if (previousGm && previousGm.role === "gm") {
+      previousGm.role = "player";
+    }
+  }
+
+  participant.role = "gm";
+  room.gmId = participant.id;
+  return participant;
 }
 
 export function getMetrics() {

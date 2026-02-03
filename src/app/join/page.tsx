@@ -23,7 +23,7 @@ export default function JoinPage() {
   const router = useRouter();
   const [inviteCode, setInviteCode] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [gmName, setGmName] = useState("");
+  const [adminName, setAdminName] = useState("");
   const [roomName, setRoomName] = useState("");
   const [privacy, setPrivacy] = useState<"private" | "public">("private");
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +35,7 @@ export default function JoinPage() {
     const storedName = localStorage.getItem(NAME_KEY);
     if (storedName) {
       setDisplayName(storedName);
-      setGmName(storedName);
+      setAdminName(storedName);
     }
     const storedRooms = localStorage.getItem(RECENT_KEY);
     if (storedRooms) {
@@ -49,8 +49,8 @@ export default function JoinPage() {
   }, [inviteCode, displayName]);
 
   const canCreate = useMemo(() => {
-    return roomName.trim().length > 0 && gmName.trim().length > 0;
-  }, [roomName, gmName]);
+    return roomName.trim().length > 0 && adminName.trim().length > 0;
+  }, [roomName, adminName]);
 
   function updateRecent(room: RecentRoom) {
     const next = [room, ...recentRooms.filter((r) => r.roomId !== room.roomId)].slice(0, 5);
@@ -112,31 +112,31 @@ export default function JoinPage() {
         body: JSON.stringify({
           name: roomName.trim(),
           privacy,
-          gmName: gmName.trim(),
+          adminName: adminName.trim(),
         }),
       });
       const payload = (await res.json()) as ApiResponse<{
         roomId: string;
         inviteCode: string;
-        gmParticipantId: string;
+        adminParticipantId: string;
       }>;
       if (payload.error || !payload.data) {
         throw new Error(payload.error?.message ?? "Unable to create room");
       }
-      localStorage.setItem(NAME_KEY, gmName.trim());
+      localStorage.setItem(NAME_KEY, adminName.trim());
       updateRecent({
         roomId: payload.data.roomId,
         inviteCode: payload.data.inviteCode,
         name: roomName.trim(),
-        role: "gm",
+        role: "admin",
       });
       localStorage.setItem(
         `aynfrp:room:${payload.data.roomId}:participant`,
-        payload.data.gmParticipantId
+        payload.data.adminParticipantId
       );
-      localStorage.setItem(`aynfrp:room:${payload.data.roomId}:role`, "gm");
+      localStorage.setItem(`aynfrp:room:${payload.data.roomId}:role`, "admin");
       router.push(
-        `/room/${payload.data.roomId}?pid=${payload.data.gmParticipantId}&role=gm`
+        `/room/${payload.data.roomId}?pid=${payload.data.adminParticipantId}&role=admin`
       );
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "Unable to create room");
@@ -216,12 +216,12 @@ export default function JoinPage() {
                 />
               </label>
               <label className="text-sm font-semibold text-zinc-600">
-                Your name (GM)
+                Your name (admin)
                 <input
                   className="mt-2 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
-                  placeholder="GM name"
-                  value={gmName}
-                  onChange={(event) => setGmName(event.target.value)}
+                  placeholder="Admin name"
+                  value={adminName}
+                  onChange={(event) => setAdminName(event.target.value)}
                 />
               </label>
               <label className="text-sm font-semibold text-zinc-600">
