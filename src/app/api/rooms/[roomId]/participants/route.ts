@@ -1,11 +1,13 @@
+import { NextRequest } from "next/server";
 import { ok, fail } from "@/server/api";
 import { getRoom } from "@/server/store";
 
 export async function GET(
-  _request: Request,
-  { params }: { params: { roomId: string } }
+  _request: NextRequest,
+  { params }: { params: Promise<{ roomId: string }> }
 ) {
-  const room = getRoom(params.roomId);
+  const { roomId } = await params;
+  const room = getRoom(roomId);
   if (!room) {
     return fail("room_not_found", "Room not found", 404);
   }
