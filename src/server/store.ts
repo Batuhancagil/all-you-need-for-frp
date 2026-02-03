@@ -212,7 +212,6 @@ export function setRecap(room: Room, recap: string) {
 export function setRoomGm(room: Room, participantId: string) {
   const participant = room.participants[participantId];
   if (!participant) return null;
-  if (participant.role === "admin") return null;
 
   if (room.gmId && room.gmId !== participantId) {
     const previousGm = room.participants[room.gmId];
@@ -221,8 +220,24 @@ export function setRoomGm(room: Room, participantId: string) {
     }
   }
 
-  participant.role = "gm";
+  if (participant.role !== "admin") {
+    participant.role = "gm";
+  }
   room.gmId = participant.id;
+  return participant;
+}
+
+export function updateParticipantCallState(
+  room: Room,
+  participantId: string,
+  updates: { inCall?: boolean; micOn?: boolean; camOn?: boolean }
+) {
+  const participant = room.participants[participantId];
+  if (!participant) return null;
+  if (typeof updates.inCall === "boolean") participant.inCall = updates.inCall;
+  if (typeof updates.micOn === "boolean") participant.micOn = updates.micOn;
+  if (typeof updates.camOn === "boolean") participant.camOn = updates.camOn;
+  participant.lastSeen = nowIso();
   return participant;
 }
 

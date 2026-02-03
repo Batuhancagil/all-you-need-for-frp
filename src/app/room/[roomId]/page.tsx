@@ -59,10 +59,7 @@ export default function RoomPage() {
   const [gmAssignError, setGmAssignError] = useState<string | null>(null);
 
   const canManageSession = role === "gm" || role === "admin";
-  const gmCandidates = useMemo(
-    () => participants.filter((person) => person.role !== "admin"),
-    [participants]
-  );
+  const gmCandidates = useMemo(() => participants, [participants]);
 
   useEffect(() => {
     const storedName = localStorage.getItem("aynfrp:lastName");
@@ -251,6 +248,15 @@ export default function RoomPage() {
     }
   }
 
+  async function updateCallState(updates: { inCall?: boolean; micOn?: boolean; camOn?: boolean }) {
+    if (!participantId) return;
+    await fetch(`/api/rooms/${roomId}/call`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ participantId, ...updates }),
+    }).catch(() => null);
+  }
+
   async function handleJoinCall() {
     setCallError(null);
     try {
@@ -258,8 +264,13 @@ export default function RoomPage() {
         await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
       }
       setCallJoined(true);
+      await updateCallState({ inCall: true, micOn: true, camOn: true });
+      setMicOn(true);
+      setCamOn(true);
     } catch (err) {
       setCallError("Camera/mic permissions denied. You can still roll dice.");
+      await updateCallState({ inCall: true, micOn: false, camOn: false });
+      setCallJoined(true);
     }
   }
 
@@ -356,13 +367,21 @@ export default function RoomPage() {
                 </button>
                 <button
                   className="rounded-full border border-zinc-200 px-4 py-2 text-xs font-semibold"
-                  onClick={() => setMicOn((prev) => !prev)}
+                  onClick={async () => {
+                    const next = !micOn;
+                    setMicOn(next);
+                    await updateCallState({ micOn: next });
+                  }}
                 >
                   {micOn ? "Mic on" : "Mic off"}
                 </button>
                 <button
                   className="rounded-full border border-zinc-200 px-4 py-2 text-xs font-semibold"
-                  onClick={() => setCamOn((prev) => !prev)}
+                  onClick={async () => {
+                    const next = !camOn;
+                    setCamOn(next);
+                    await updateCallState({ camOn: next });
+                  }}
                 >
                   {camOn ? "Cam on" : "Cam off"}
                 </button>
@@ -374,7 +393,44 @@ export default function RoomPage() {
                 <p className="mt-3 text-xs text-zinc-500">
                   Call UI is ready; media wiring will follow in real-time implementation.
                 </p>
-              ) : null}
+              ) : (
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {participants.filter((person) => person.inCall).length === 0 ? (
+                    <p className="text-xs text-zinc-500">No one has joined the call yet.</p>
+                  ) : (
+                    participants
+                      .filter((person) => person.inCall)
+                      .map((person) => (
+                        <div
+                          key={person.id}
+                          className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2"
+                        >
+                          {person.camOn ? (
+                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-zinc-900 text-xs font-semibold text-white">
+                              Video
+                            </div>
+                          ) : (
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-200 text-xs font-semibold text-zinc-700">
+                              {person.name
+                                .split(" ")
+                                .map((chunk) => chunk[0])
+                                .join("")
+                                .slice(0, 2)
+                                .toUpperCase()}
+                            </div>
+                          )}
+                          <div>
+                            <p className="text-xs font-semibold">{person.name}</p>
+                            <p className="text-[11px] text-zinc-500">
+                              {person.camOn ? "Camera on" : "Camera off"} •{" "}
+                              {person.micOn ? "Mic on" : "Mic off"}
+                            </p>
+                          </div>
+                        </div>
+                      ))
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
