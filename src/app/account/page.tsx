@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { signIn, signOut, useSession } from "next-auth/react";
 
 type RecentRoom = {
   roomId: string;
@@ -10,34 +11,38 @@ type RecentRoom = {
 };
 
 const RECENT_KEY = "aynfrp:recentRooms";
-const ACCOUNT_KEY = "aynfrp:accountEmail";
 
 export default function AccountPage() {
+  const { data: session, status } = useSession();
   const [email, setEmail] = useState("");
   const [linkSent, setLinkSent] = useState(false);
-  const [confirmed, setConfirmed] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [recentRooms, setRecentRooms] = useState<RecentRoom[]>([]);
 
   useEffect(() => {
-    const stored = localStorage.getItem(ACCOUNT_KEY);
-    if (stored) {
-      setEmail(stored);
-      setConfirmed(true);
-    }
     const storedRooms = localStorage.getItem(RECENT_KEY);
     if (storedRooms) {
       setRecentRooms(JSON.parse(storedRooms));
     }
   }, []);
 
-  function sendMagicLink() {
-    setLinkSent(true);
-  }
-
-  function confirmMagicLink() {
+  async function sendMagicLink() {
     if (!email.trim()) return;
-    localStorage.setItem(ACCOUNT_KEY, email.trim());
-    setConfirmed(true);
+    setError(null);
+    setLinkSent(false);
+    try {
+      const res = await signIn("email", {
+        email: email.trim(),
+        callbackUrl: "/account",
+        redirect: false,
+      });
+      if (res?.error) {
+        throw new Error(res.error);
+      }
+      setLinkSent(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to send magic link");
+    }
   }
 
   return (
@@ -65,17 +70,28 @@ export default function AccountPage() {
             >
               Send magic link
             </button>
+            {status === "authenticated" ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="text-xs text-emerald-600">
+                  Signed in as {session.user?.email ?? "account"}.
+                </p>
+                <button
+                  className="rounded-full border border-zinc-200 px-4 py-2 text-xs font-semibold"
+                  onClick={() => signOut({ callbackUrl: "/account" })}
+                >
+                  Sign out
+                </button>
+              </div>
+            ) : null}
             {linkSent ? (
-              <button
-                className="rounded-full border border-zinc-200 px-4 py-2 text-xs font-semibold"
-                onClick={confirmMagicLink}
-              >
-                Confirm magic link
-              </button>
+              <p className="text-xs text-emerald-600">
+                Check your inbox for the magic link.
+              </p>
             ) : null}
-            {confirmed ? (
-              <p className="text-xs text-emerald-600">Account linked to {email}.</p>
+            {status === "loading" ? (
+              <p className="text-xs text-zinc-500">Checking session...</p>
             ) : null}
+            {error ? <p className="text-xs text-red-600">{error}</p> : null}
           </div>
         </section>
 
