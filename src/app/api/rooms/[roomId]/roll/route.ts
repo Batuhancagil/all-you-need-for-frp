@@ -1,17 +1,12 @@
 import { NextRequest } from "next/server";
 import { ok, fail } from "@/server/api";
-import { addRoll, getRoom } from "@/server/store";
+import { prisma } from "@/server/db";
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ roomId: string }> }
 ) {
   const { roomId } = await params;
-  const room = getRoom(roomId);
-  if (!room) {
-    return fail("room_not_found", "Room not found", 404);
-  }
-
   const body = await request.json().catch(() => null);
   const participantId = body?.participantId as string | undefined;
   const sides = Number(body?.sides ?? 20);
@@ -25,11 +20,36 @@ export async function POST(
     return fail("invalid_roll", "Invalid dice roll parameters");
   }
 
-  const participant = room.participants[participantId];
+  const participant = await prisma.participant.findFirst({
+    where: { id: participantId, roomId },
+  });
   if (!participant) {
     return fail("participant_not_found", "Participant not found", 404);
   }
 
-  const roll = addRoll(room, participant, sides, count);
-  return ok({ roll });
+  const results = Array.from({ length: count }, () => Math.ceil(Math.random() * sides));
+  const roll = await prisma.roll.create({
+    data: {
+      roomId,
+      participantId: participant.id,
+      participantName: participant.name,
+      sides,
+      count,
+      results,
+      total: results.reduce((sum, value) => sum + value, 0),
+    },
+  });
+
+  return ok({
+    roll: {
+      id: roll.id,
+      participantId: roll.participantId,
+      participantName: roll.participantName,
+      sides: roll.sides,
+      count: roll.count,
+      results: roll.results,
+      total: roll.total,
+      createdAt: roll.createdAt.toISOString(),
+    },
+  });
 }

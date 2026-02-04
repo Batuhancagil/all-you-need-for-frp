@@ -1,5 +1,6 @@
 import { ok, fail } from "@/server/api";
-import { getRoomByInvite, joinRoom } from "@/server/store";
+import { prisma } from "@/server/db";
+import { mapParticipantRole } from "@/server/room-mappers";
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
@@ -16,15 +17,26 @@ export async function POST(request: Request) {
     return fail("missing_fields", "Invite code and display name are required");
   }
 
-  const room = getRoomByInvite(inviteCode);
+  const room = await prisma.room.findUnique({
+    where: { inviteCode: inviteCode.trim().toUpperCase() },
+    select: { id: true },
+  });
   if (!room) {
     return fail("invite_not_found", "Invite link is invalid or expired", 404);
   }
 
-  const participant = joinRoom(room, displayName);
+  const participant = await prisma.participant.create({
+    data: {
+      roomId: room.id,
+      name: displayName.trim(),
+      role: "PLAYER",
+    },
+  });
   return ok({
     roomId: room.id,
-    participant,
-    room,
+    participant: {
+      id: participant.id,
+      role: mapParticipantRole(participant.role),
+    },
   });
 }

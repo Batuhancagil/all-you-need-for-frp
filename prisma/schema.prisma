@@ -53,3 +53,77 @@ model VerificationToken {
 
   @@unique([identifier, token])
 }
+
+enum RoomPrivacy {
+  PUBLIC
+  PRIVATE
+}
+
+enum SessionState {
+  WAITING
+  ACTIVE
+  ENDED
+}
+
+enum ParticipantRole {
+  ADMIN
+  GM
+  PLAYER
+}
+
+model AdminSettings {
+  id             String       @id @default("singleton")
+  roomNamePrefix String?
+  privacy        RoomPrivacy?
+  updatedAt      DateTime     @updatedAt
+}
+
+model Room {
+  id               String        @id @default(cuid())
+  name             String
+  privacy          RoomPrivacy   @default(PRIVATE)
+  inviteCode       String        @unique
+  sessionState     SessionState  @default(WAITING)
+  recap            String?
+  createdAt        DateTime      @default(now())
+  sessionStartedAt DateTime?
+  sessionEndedAt   DateTime?
+
+  gmParticipantId String?       @unique
+  gmParticipant   Participant?  @relation("RoomGm", fields: [gmParticipantId], references: [id], onDelete: SetNull)
+
+  participants    Participant[]
+  rolls           Roll[]
+}
+
+model Participant {
+  id        String          @id @default(cuid())
+  roomId    String
+  name      String
+  role      ParticipantRole @default(PLAYER)
+  joinedAt  DateTime        @default(now())
+  lastSeen  DateTime        @default(now())
+  inCall    Boolean         @default(false)
+  micOn     Boolean         @default(false)
+  camOn     Boolean         @default(false)
+
+  room  Room  @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  rolls Roll[]
+
+  gmRoom Room? @relation("RoomGm")
+}
+
+model Roll {
+  id             String      @id @default(cuid())
+  roomId         String
+  participantId  String
+  participantName String
+  sides          Int
+  count          Int
+  results        Int[]
+  total          Int
+  createdAt      DateTime    @default(now())
+
+  room        Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  participant Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+}

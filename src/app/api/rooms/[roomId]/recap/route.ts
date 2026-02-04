@@ -1,13 +1,16 @@
 import { NextRequest } from "next/server";
 import { ok, fail } from "@/server/api";
-import { getRoom, setRecap } from "@/server/store";
+import { prisma } from "@/server/db";
 
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ roomId: string }> }
 ) {
   const { roomId } = await params;
-  const room = getRoom(roomId);
+  const room = await prisma.room.findUnique({
+    where: { id: roomId },
+    select: { recap: true },
+  });
   if (!room) {
     return fail("room_not_found", "Room not found", 404);
   }
@@ -20,11 +23,6 @@ export async function POST(
   { params }: { params: Promise<{ roomId: string }> }
 ) {
   const { roomId } = await params;
-  const room = getRoom(roomId);
-  if (!room) {
-    return fail("room_not_found", "Room not found", 404);
-  }
-
   const body = await request.json().catch(() => null);
   const participantId = body?.participantId as string | undefined;
   const recap = (body?.recap as string | undefined)?.trim();
@@ -37,11 +35,20 @@ export async function POST(
     return fail("invalid_recap", "Recap cannot be empty");
   }
 
-  const participant = room.participants[participantId];
-  if (!participant || (participant.role !== "gm" && participant.role !== "admin")) {
+  const participant = await prisma.participant.findFirst({
+    where: { id: participantId, roomId },
+  });
+  if (!participant) {
+    return fail("participant_not_found", "Participant not found", 404);
+  }
+  if (participant.role !== "GM" && participant.role !== "ADMIN") {
     return fail("forbidden", "Only GM or admin can save recap", 403);
   }
 
-  setRecap(room, recap);
-  return ok({ recap: room.recap });
+  const updated = await prisma.room.update({
+    where: { id: roomId },
+    data: { recap },
+    select: { recap: true },
+  });
+  return ok({ recap: updated.recap });
 }
