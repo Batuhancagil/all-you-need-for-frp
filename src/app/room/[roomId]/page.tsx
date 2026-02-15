@@ -43,12 +43,20 @@ export default function RoomPage() {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [rolls, setRolls] = useState<Roll[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [displayName, setDisplayName] = useState("");
-  const [participantId, setParticipantId] = useState<string | null>(null);
-  const [role, setRole] = useState<"gm" | "player" | "admin">("player");
+  const [displayName, setDisplayName] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return localStorage.getItem("aynfrp:lastName") ?? "";
+  });
+  const [storedParticipantId, setStoredParticipantId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem(`aynfrp:room:${roomId}:participant`);
+  });
+  const [storedRole, setStoredRole] = useState<"gm" | "player" | "admin">(() => {
+    if (typeof window === "undefined") return "player";
+    const roleValue = localStorage.getItem(`aynfrp:room:${roomId}:role`);
+    return roleValue === "gm" || roleValue === "admin" || roleValue === "player" ? roleValue : "player";
+  });
   const [callJoined, setCallJoined] = useState(false);
-  const [micOn, setMicOn] = useState(false);
-  const [camOn, setCamOn] = useState(false);
   const [callError, setCallError] = useState<string | null>(null);
   const [diceSides, setDiceSides] = useState(20);
   const [diceCount, setDiceCount] = useState(1);
@@ -58,37 +66,31 @@ export default function RoomPage() {
   const [gmAssignId, setGmAssignId] = useState<string>("");
   const [gmAssignError, setGmAssignError] = useState<string | null>(null);
 
+  const queryParticipantId = search.get("pid");
+  const queryRole = search.get("role");
+  const participantId = queryParticipantId ?? storedParticipantId;
+  const role: "gm" | "player" | "admin" =
+    queryRole === "gm" || queryRole === "admin" || queryRole === "player" ? queryRole : storedRole;
   const canManageSession = role === "gm" || role === "admin";
   const gmCandidates = useMemo(() => participants, [participants]);
-
-  useEffect(() => {
-    const storedName = localStorage.getItem("aynfrp:lastName");
-    if (storedName) {
-      setDisplayName(storedName);
-    }
-
-    const storedParticipant = localStorage.getItem(`aynfrp:room:${roomId}:participant`);
-    if (storedParticipant) {
-      setParticipantId(storedParticipant);
-    }
-    const storedRole = localStorage.getItem(`aynfrp:room:${roomId}:role`);
-    if (storedRole === "gm" || storedRole === "admin" || storedRole === "player") {
-      setRole(storedRole);
-    }
+  const callParticipants = useMemo(
+    () => participants.filter((person) => person.inCall),
+    [participants]
+  );
+  const callRoomName = useMemo(() => {
+    // Jitsi room names should be simple alphanumeric tokens.
+    const safeRoomId = roomId.replace(/[^a-zA-Z0-9]/g, "");
+    return `AllYouNeedForFRP${safeRoomId || "Room"}`;
   }, [roomId]);
 
   useEffect(() => {
-    const queryParticipant = search.get("pid");
-    const queryRole = search.get("role");
-    if (queryParticipant) {
-      setParticipantId(queryParticipant);
-      localStorage.setItem(`aynfrp:room:${roomId}:participant`, queryParticipant);
+    if (queryParticipantId) {
+      localStorage.setItem(`aynfrp:room:${roomId}:participant`, queryParticipantId);
     }
     if (queryRole === "gm" || queryRole === "admin" || queryRole === "player") {
-      setRole(queryRole);
       localStorage.setItem(`aynfrp:room:${roomId}:role`, queryRole);
     }
-  }, [roomId, search]);
+  }, [roomId, queryParticipantId, queryRole]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
@@ -167,8 +169,8 @@ export default function RoomPage() {
       setError(payload.error?.message ?? "Unable to join");
       return;
     }
-    setParticipantId(payload.data.participant.id);
-    setRole(payload.data.participant.role);
+    setStoredParticipantId(payload.data.participant.id);
+    setStoredRole(payload.data.participant.role);
     localStorage.setItem("aynfrp:lastName", displayName.trim());
     localStorage.setItem(`aynfrp:room:${roomId}:participant`, payload.data.participant.id);
     localStorage.setItem(`aynfrp:room:${roomId}:role`, payload.data.participant.role);
@@ -265,14 +267,29 @@ export default function RoomPage() {
       }
       setCallJoined(true);
       await updateCallState({ inCall: true, micOn: true, camOn: true });
-      setMicOn(true);
-      setCamOn(true);
-    } catch (err) {
+    } catch {
       setCallError("Camera/mic permissions denied. You can still roll dice.");
       await updateCallState({ inCall: true, micOn: false, camOn: false });
       setCallJoined(true);
     }
   }
+
+  async function handleQuitCall() {
+    setCallError(null);
+    setCallJoined(false);
+    await updateCallState({ inCall: false, micOn: false, camOn: false });
+  }
+
+  useEffect(() => {
+    return () => {
+      if (!participantId) return;
+      void fetch(`/api/rooms/${roomId}/call`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ participantId, inCall: false, micOn: false, camOn: false }),
+      }).catch(() => null);
+    };
+  }, [participantId, roomId]);
 
   const invitePrompt = useMemo(() => search.get("invite"), [search]);
 
@@ -359,48 +376,47 @@ export default function RoomPage() {
                 )}
               </div>
               <div className="mt-4 flex flex-wrap items-center gap-3">
-                <button
-                  className="rounded-full border border-zinc-200 px-4 py-2 text-xs font-semibold"
-                  onClick={handleJoinCall}
-                >
-                  {callJoined ? "In call" : "Join call"}
-                </button>
-                <button
-                  className="rounded-full border border-zinc-200 px-4 py-2 text-xs font-semibold"
-                  onClick={async () => {
-                    const next = !micOn;
-                    setMicOn(next);
-                    await updateCallState({ micOn: next });
-                  }}
-                >
-                  {micOn ? "Mic on" : "Mic off"}
-                </button>
-                <button
-                  className="rounded-full border border-zinc-200 px-4 py-2 text-xs font-semibold"
-                  onClick={async () => {
-                    const next = !camOn;
-                    setCamOn(next);
-                    await updateCallState({ camOn: next });
-                  }}
-                >
-                  {camOn ? "Cam on" : "Cam off"}
-                </button>
+                {callJoined ? (
+                  <button
+                    className="rounded-full bg-rose-600 px-4 py-2 text-xs font-semibold text-white"
+                    onClick={handleQuitCall}
+                  >
+                    Quit call
+                  </button>
+                ) : (
+                  <button
+                    className="rounded-full border border-zinc-200 px-4 py-2 text-xs font-semibold"
+                    onClick={handleJoinCall}
+                  >
+                    Join call
+                  </button>
+                )}
+                <span className="text-xs text-zinc-500">
+                  {callJoined ? "Use call controls inside the video window." : "Join to open live call."}
+                </span>
               </div>
               {callError ? (
                 <p className="mt-3 text-xs text-amber-600">{callError}</p>
               ) : null}
-              {!callJoined ? (
-                <p className="mt-3 text-xs text-zinc-500">
-                  Call UI is ready; media wiring will follow in real-time implementation.
-                </p>
-              ) : (
+              {callJoined ? (
+                <div className="mt-4 overflow-hidden rounded-xl border border-zinc-200">
+                  <iframe
+                    title="Room video call"
+                    src={`https://meet.jit.si/${callRoomName}#config.prejoinPageEnabled=false`}
+                    allow="camera; microphone; fullscreen; display-capture; autoplay"
+                    className="h-[420px] w-full bg-zinc-100"
+                  />
+                </div>
+              ) : null}
+              <div className="mt-4">
+                <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500">
+                  In call now
+                </h3>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {participants.filter((person) => person.inCall).length === 0 ? (
+                  {callParticipants.length === 0 ? (
                     <p className="text-xs text-zinc-500">No one has joined the call yet.</p>
                   ) : (
-                    participants
-                      .filter((person) => person.inCall)
-                      .map((person) => (
+                    callParticipants.map((person) => (
                         <div
                           key={person.id}
                           className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2"
@@ -430,7 +446,7 @@ export default function RoomPage() {
                       ))
                   )}
                 </div>
-              )}
+              </div>
             </div>
 
             <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">

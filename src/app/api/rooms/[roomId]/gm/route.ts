@@ -38,30 +38,28 @@ export async function POST(
     return fail("invalid_gm", "Selected participant cannot be set as GM", 400);
   }
 
-  await prisma.$transaction(async (tx) => {
-    if (room.gmParticipantId && room.gmParticipantId !== gmParticipantId) {
-      const previousGm = await tx.participant.findUnique({
-        where: { id: room.gmParticipantId },
-      });
-      if (previousGm && previousGm.role === "GM") {
-        await tx.participant.update({
-          where: { id: previousGm.id },
-          data: { role: "PLAYER" },
-        });
-      }
-    }
-
-    if (gmParticipant.role !== "ADMIN") {
-      await tx.participant.update({
-        where: { id: gmParticipant.id },
-        data: { role: "GM" },
-      });
-    }
-
-    await tx.room.update({
-      where: { id: roomId },
-      data: { gmParticipantId: gmParticipant.id },
+  if (room.gmParticipantId && room.gmParticipantId !== gmParticipantId) {
+    const previousGm = await prisma.participant.findUnique({
+      where: { id: room.gmParticipantId },
     });
+    if (previousGm && previousGm.role === "GM") {
+      await prisma.participant.update({
+        where: { id: previousGm.id },
+        data: { role: "PLAYER" },
+      });
+    }
+  }
+
+  if (gmParticipant.role !== "ADMIN") {
+    await prisma.participant.update({
+      where: { id: gmParticipant.id },
+      data: { role: "GM" },
+    });
+  }
+
+  await prisma.room.update({
+    where: { id: roomId },
+    data: { gmParticipantId: gmParticipant.id },
   });
 
   return ok({ gmId: gmParticipant.id });

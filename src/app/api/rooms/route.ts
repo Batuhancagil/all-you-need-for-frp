@@ -26,22 +26,19 @@ export async function POST(request: Request) {
   const resolvedPrefix = settings?.roomNamePrefix ?? "";
   const inviteCode = await createUniqueInviteCode();
 
-  const { room, adminParticipant } = await prisma.$transaction(async (tx) => {
-    const createdRoom = await tx.room.create({
-      data: {
-        name: `${resolvedPrefix}${name}`.trim(),
-        privacy: resolvedPrivacy,
-        inviteCode,
-      },
-    });
-    const createdAdmin = await tx.participant.create({
-      data: {
-        roomId: createdRoom.id,
-        name: adminName,
-        role: "ADMIN",
-      },
-    });
-    return { room: createdRoom, adminParticipant: createdAdmin };
+  const room = await prisma.room.create({
+    data: {
+      name: `${resolvedPrefix}${name}`.trim(),
+      privacy: resolvedPrivacy,
+      inviteCode,
+    },
+  });
+  const adminParticipant = await prisma.participant.create({
+    data: {
+      roomId: room.id,
+      name: adminName,
+      role: "ADMIN",
+    },
   });
 
   return ok({

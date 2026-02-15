@@ -14,7 +14,7 @@ export async function GET() {
     },
   });
   return ok({
-    rooms: rooms.map((room) => ({
+    rooms: rooms.map((room: (typeof rooms)[number]) => ({
       id: room.id,
       name: room.name,
       privacy: mapPrivacy(room.privacy),

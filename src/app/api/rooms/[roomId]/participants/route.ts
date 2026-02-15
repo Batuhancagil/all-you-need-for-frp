@@ -22,7 +22,7 @@ export async function GET(
   }
 
   return ok({
-    participants: room.participants.map((participant) => ({
+    participants: room.participants.map((participant: (typeof room.participants)[number]) => ({
       id: participant.id,
       name: participant.name,
       role: mapParticipantRole(participant.role),

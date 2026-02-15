@@ -21,11 +21,10 @@ export default function AdminPage() {
   const [metrics, setMetrics] = useState<{ sessionsStarted: number; sessionsEnded: number; uniqueParticipants: number } | null>(null);
   const [roomNamePrefix, setRoomNamePrefix] = useState("");
   const [privacy, setPrivacy] = useState<"private" | "public">("private");
-  const [isAdmin, setIsAdmin] = useState(false);
-
-  useEffect(() => {
-    setIsAdmin(localStorage.getItem("aynfrp:isAdmin") === "true");
-  }, []);
+  const [isAdmin] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("aynfrp:isAdmin") === "true";
+  });
 
   useEffect(() => {
     async function loadRooms() {
