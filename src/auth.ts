@@ -1,6 +1,4 @@
 import NextAuth, { type NextAuthOptions } from "next-auth";
-// Next.js/TS module resolution can fail this subpath in strict build despite runtime support.
-// @ts-expect-error next-auth provider subpath types are present in package exports.
 import EmailProvider from "next-auth/providers/email";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 
