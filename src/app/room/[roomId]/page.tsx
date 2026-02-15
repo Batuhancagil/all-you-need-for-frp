@@ -57,6 +57,7 @@ export default function RoomPage() {
     return roleValue === "gm" || roleValue === "admin" || roleValue === "player" ? roleValue : "player";
   });
   const [callJoined, setCallJoined] = useState(false);
+  const [callFrameReady, setCallFrameReady] = useState(false);
   const [callError, setCallError] = useState<string | null>(null);
   const [diceSides, setDiceSides] = useState(20);
   const [diceCount, setDiceCount] = useState(1);
@@ -261,6 +262,7 @@ export default function RoomPage() {
 
   async function handleJoinCall() {
     setCallError(null);
+    setCallFrameReady(false);
     try {
       if (navigator.mediaDevices?.getUserMedia) {
         await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
@@ -277,6 +279,7 @@ export default function RoomPage() {
   async function handleQuitCall() {
     setCallError(null);
     setCallJoined(false);
+    setCallFrameReady(false);
     await updateCallState({ inCall: false, micOn: false, camOn: false });
   }
 
@@ -394,6 +397,15 @@ export default function RoomPage() {
                 <span className="text-xs text-zinc-500">
                   {callJoined ? "Use call controls inside the video window." : "Join to open live call."}
                 </span>
+                {callJoined ? (
+                  <span
+                    className={`rounded-full px-3 py-1 text-[11px] font-semibold ${
+                      callFrameReady ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                    }`}
+                  >
+                    {callFrameReady ? "Connected to video room" : "Connecting to video..."}
+                  </span>
+                ) : null}
               </div>
               {callError ? (
                 <p className="mt-3 text-xs text-amber-600">{callError}</p>
@@ -405,6 +417,7 @@ export default function RoomPage() {
                     src={`https://meet.jit.si/${callRoomName}#config.prejoinPageEnabled=false`}
                     allow="camera; microphone; fullscreen; display-capture; autoplay"
                     className="h-[420px] w-full bg-zinc-100"
+                    onLoad={() => setCallFrameReady(true)}
                   />
                 </div>
               ) : null}
