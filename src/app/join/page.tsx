@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn, signOut, useSession } from "next-auth/react";
 
@@ -13,6 +13,15 @@ type RecentRoom = {
 type ApiResponse<T> = {
   data: T | null;
   error: { code: string; message: string } | null;
+};
+
+type PublicRoom = {
+  id: string;
+  name: string;
+  inviteCode: string;
+  sessionState: "waiting" | "active" | "ended";
+  participantCount: number;
+  createdAt: string;
 };
 
 const RECENT_KEY = "aynfrp:recentRooms";
@@ -31,6 +40,7 @@ export default function JoinPage() {
   const [error, setError] = useState<string | null>(null);
   const [signInEmail, setSignInEmail] = useState("");
   const [loading, setLoading] = useState(false);
+  const [publicRoomsLoading, setPublicRoomsLoading] = useState(false);
   const [recentRooms, setRecentRooms] = useState<RecentRoom[]>(() => {
     if (typeof window === "undefined") return [];
     const storedRooms = localStorage.getItem(RECENT_KEY);
@@ -42,6 +52,7 @@ export default function JoinPage() {
     }
   });
   const [linkSent, setLinkSent] = useState(false);
+  const [publicRooms, setPublicRooms] = useState<PublicRoom[]>([]);
 
   const canJoin = useMemo(() => {
     return inviteCode.trim().length > 0 && displayName.trim().length > 0;
@@ -51,22 +62,45 @@ export default function JoinPage() {
     return roomName.trim().length > 0 && displayName.trim().length > 0;
   }, [roomName, displayName]);
 
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    let cancelled = false;
+
+    async function loadPublicRooms() {
+      setPublicRoomsLoading(true);
+      try {
+        const res = await fetch("/api/rooms");
+        const payload = (await res.json()) as ApiResponse<{ rooms: PublicRoom[] }>;
+        if (!cancelled && payload.data) {
+          setPublicRooms(payload.data.rooms);
+        }
+      } finally {
+        if (!cancelled) setPublicRoomsLoading(false);
+      }
+    }
+
+    void loadPublicRooms();
+    return () => {
+      cancelled = true;
+    };
+  }, [status]);
+
   function updateRecent(room: RecentRoom) {
     const next = [room, ...recentRooms.filter((r) => r.roomId !== room.roomId)].slice(0, 5);
     setRecentRooms(next);
     localStorage.setItem(RECENT_KEY, JSON.stringify(next));
   }
 
-  async function handleJoin() {
+  async function joinByInviteCode(code: string) {
     setError(null);
-    if (!canJoin || status !== "authenticated") return;
+    if (!displayName.trim() || status !== "authenticated") return;
     setLoading(true);
     try {
       const res = await fetch("/api/rooms/join", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          inviteCode: inviteCode.trim(),
+          inviteCode: code.trim(),
           displayName: displayName.trim(),
         }),
       });
@@ -80,7 +114,7 @@ export default function JoinPage() {
       localStorage.setItem(NAME_KEY, displayName.trim());
       updateRecent({
         roomId: payload.data.roomId,
-        inviteCode: inviteCode.trim().toUpperCase(),
+        inviteCode: code.trim().toUpperCase(),
         name: displayName.trim(),
       });
       localStorage.setItem(
@@ -97,6 +131,16 @@ export default function JoinPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleJoin() {
+    if (!canJoin) return;
+    await joinByInviteCode(inviteCode);
+  }
+
+  async function handleJoinPublic(room: PublicRoom) {
+    setInviteCode(room.inviteCode);
+    await joinByInviteCode(room.inviteCode);
   }
 
   async function handleCreate() {
@@ -333,6 +377,41 @@ export default function JoinPage() {
                 >
                   <p className="font-semibold text-zinc-900">{room.name}</p>
                   <p className="mt-1 text-xs text-zinc-500">Invite: {room.inviteCode}</p>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+          <div>
+            <h2 className="text-lg font-semibold">Public rooms</h2>
+            <p className="text-sm text-zinc-600">Discover open rooms and join with one click.</p>
+          </div>
+          {publicRoomsLoading ? (
+            <p className="mt-4 text-sm text-zinc-500">Loading public rooms...</p>
+          ) : publicRooms.length === 0 ? (
+            <p className="mt-4 text-sm text-zinc-500">
+              No public rooms right now. Create one and set Privacy to Public.
+            </p>
+          ) : (
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {publicRooms.map((room) => (
+                <button
+                  key={room.id}
+                  className="rounded-xl border border-zinc-200 px-4 py-3 text-left text-sm transition hover:border-zinc-300 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:bg-zinc-100"
+                  onClick={() => handleJoinPublic(room)}
+                  disabled={loading || displayName.trim().length === 0}
+                >
+                  <p className="font-semibold text-zinc-900">{room.name}</p>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    Invite: {room.inviteCode} • {room.participantCount} players • {room.sessionState}
+                  </p>
+                  {displayName.trim().length === 0 ? (
+                    <p className="mt-2 text-xs text-amber-600">
+                      Enter your display name above to join this public room.
+                    </p>
+                  ) : null}
                 </button>
               ))}
             </div>

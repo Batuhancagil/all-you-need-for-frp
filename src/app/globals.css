@@ -26,3 +26,19 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Keep LiveKit call controls visible so camera/mic buttons are always easy to access. */
+.lk-control-bar {
+  opacity: 1 !important;
+  transform: none !important;
+}
+
+.call-room .lk-video-conference {
+  height: 100%;
+}
+
+.call-room .lk-control-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 30;
+}

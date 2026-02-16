@@ -59,11 +59,6 @@ export default function RoomPage() {
     if (typeof window === "undefined") return null;
     return localStorage.getItem(`aynfrp:room:${roomId}:participant`);
   });
-  const [storedRole, setStoredRole] = useState<"gm" | "player" | "admin">(() => {
-    if (typeof window === "undefined") return "player";
-    const roleValue = localStorage.getItem(`aynfrp:room:${roomId}:role`);
-    return roleValue === "gm" || roleValue === "admin" || roleValue === "player" ? roleValue : "player";
-  });
   const [callJoined, setCallJoined] = useState(false);
   const [callFrameReady, setCallFrameReady] = useState(false);
   const [callToken, setCallToken] = useState<string | null>(null);
@@ -75,12 +70,16 @@ export default function RoomPage() {
   const [recapError, setRecapError] = useState<string | null>(null);
   const [gmAssignId, setGmAssignId] = useState<string>("");
   const [gmAssignError, setGmAssignError] = useState<string | null>(null);
+  const [inviteCopied, setInviteCopied] = useState(false);
+  const [inviteCopyError, setInviteCopyError] = useState<string | null>(null);
 
   const queryParticipantId = search.get("pid");
-  const queryRole = search.get("role");
   const participantId = queryParticipantId ?? storedParticipantId;
-  const role: "gm" | "player" | "admin" =
-    queryRole === "gm" || queryRole === "admin" || queryRole === "player" ? queryRole : storedRole;
+  const currentParticipant = useMemo(
+    () => participants.find((person) => person.id === participantId) ?? null,
+    [participantId, participants]
+  );
+  const role: "gm" | "player" | "admin" = currentParticipant?.role ?? "player";
   const canManageSession = role === "gm" || role === "admin";
   const gmCandidates = useMemo(() => participants, [participants]);
   const callParticipants = useMemo(
@@ -94,10 +93,12 @@ export default function RoomPage() {
     if (queryParticipantId) {
       localStorage.setItem(`aynfrp:room:${roomId}:participant`, queryParticipantId);
     }
-    if (queryRole === "gm" || queryRole === "admin" || queryRole === "player") {
-      localStorage.setItem(`aynfrp:room:${roomId}:role`, queryRole);
-    }
-  }, [roomId, queryParticipantId, queryRole, status]);
+  }, [roomId, queryParticipantId, status]);
+
+  useEffect(() => {
+    if (!currentParticipant) return;
+    localStorage.setItem(`aynfrp:room:${roomId}:role`, currentParticipant.role);
+  }, [currentParticipant, roomId]);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -184,7 +185,6 @@ export default function RoomPage() {
       return;
     }
     setStoredParticipantId(payload.data.participant.id);
-    setStoredRole(payload.data.participant.role);
     localStorage.setItem("aynfrp:lastName", displayName.trim());
     localStorage.setItem(`aynfrp:room:${roomId}:participant`, payload.data.participant.id);
     localStorage.setItem(`aynfrp:room:${roomId}:role`, payload.data.participant.role);
@@ -314,6 +314,17 @@ export default function RoomPage() {
     await updateCallState({ inCall: false, micOn: false, camOn: false });
   }
 
+  async function handleCopyInviteCode() {
+    setInviteCopyError(null);
+    try {
+      await navigator.clipboard.writeText(room?.inviteCode ?? "");
+      setInviteCopied(true);
+      setTimeout(() => setInviteCopied(false), 1800);
+    } catch {
+      setInviteCopyError("Could not copy automatically. Please copy the code manually.");
+    }
+  }
+
   useEffect(() => {
     return () => {
       if (!participantId) return;
@@ -375,6 +386,13 @@ export default function RoomPage() {
             <span className="rounded-full border border-zinc-200 px-3 py-1 text-xs text-zinc-600">
               Invite: {room.inviteCode}
             </span>
+            <button
+              className="inline-flex items-center rounded-full border border-zinc-200 px-3 py-1 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-100"
+              onClick={handleCopyInviteCode}
+            >
+              {inviteCopied ? "Copied" : "Copy invite"}
+            </button>
+            {inviteCopyError ? <span className="text-xs text-amber-600">{inviteCopyError}</span> : null}
             <Link className="text-sm text-zinc-500 underline" href="/join">
               Back to join
             </Link>
@@ -458,16 +476,18 @@ export default function RoomPage() {
                 <p className="mt-3 text-xs text-amber-600">{callError}</p>
               ) : null}
               {callJoined ? (
-                <div className="mt-4 overflow-hidden rounded-xl border border-zinc-200">
+                <div className="mt-4 rounded-xl border border-zinc-200">
                   {callToken ? (
-                    <div className="h-[420px] w-full bg-zinc-100">
+                    <div className="h-[70vh] min-h-[520px] w-full bg-zinc-100">
                       <LiveKitRoom
                         token={callToken}
                         serverUrl={LIVEKIT_URL}
                         connect
                         video
                         audio
-                        className="h-full w-full"
+                        data-lk-theme="default"
+                        options={{ adaptiveStream: true, dynacast: true }}
+                        className="call-room h-full w-full"
                         onConnected={() => setCallFrameReady(true)}
                         onDisconnected={() => setCallFrameReady(false)}
                         onError={(liveKitError) => setCallError(liveKitError.message)}
@@ -476,7 +496,7 @@ export default function RoomPage() {
                       </LiveKitRoom>
                     </div>
                   ) : (
-                    <div className="flex h-[420px] items-center justify-center text-sm text-zinc-500">
+                    <div className="flex h-[70vh] min-h-[520px] items-center justify-center text-sm text-zinc-500">
                       Connecting to room {callRoomName}...
                     </div>
                   )}
@@ -625,7 +645,7 @@ export default function RoomPage() {
                 <p className="mt-3 text-xs text-zinc-500">GM not assigned yet.</p>
               )}
             </div>
-            {role === "admin" ? (
+            {currentParticipant?.role === "admin" ? (
               <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
                 <h2 className="text-lg font-semibold">Assign GM</h2>
                 <p className="text-sm text-zinc-500">

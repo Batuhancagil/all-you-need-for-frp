@@ -4,6 +4,27 @@ import { createUniqueInviteCode } from "@/server/room-utils";
 import { mapPrivacy, mapSessionState } from "@/server/room-mappers";
 import { RoomPrivacy } from "@prisma/client";
 
+export async function GET() {
+  const rooms = await prisma.room.findMany({
+    where: { privacy: "PUBLIC" },
+    orderBy: { createdAt: "desc" },
+    include: { _count: { select: { participants: true } } },
+    take: 30,
+  });
+
+  return ok({
+    rooms: rooms.map((room) => ({
+      id: room.id,
+      name: room.name,
+      privacy: mapPrivacy(room.privacy),
+      inviteCode: room.inviteCode,
+      sessionState: mapSessionState(room.sessionState),
+      participantCount: room._count.participants,
+      createdAt: room.createdAt.toISOString(),
+    })),
+  });
+}
+
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   if (!body) {
