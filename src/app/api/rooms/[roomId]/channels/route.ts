@@ -24,7 +24,7 @@ export async function GET(
 
   if (channels.length === 0) {
     await prisma.channel.createMany({
-      data: getDefaultChannels().map((channel) => ({
+      data: getDefaultChannels().map((channel: ReturnType<typeof getDefaultChannels>[number]) => ({
         roomId,
         name: channel.name,
         slug: channel.slug,
@@ -38,7 +38,7 @@ export async function GET(
   }
 
   return ok({
-    channels: channels.map((channel) => ({
+    channels: channels.map((channel: (typeof channels)[number]) => ({
       id: channel.id,
       name: channel.name,
       slug: channel.slug,

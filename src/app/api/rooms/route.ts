@@ -14,7 +14,7 @@ export async function GET() {
   });
 
   return ok({
-    rooms: rooms.map((room) => ({
+    rooms: rooms.map((room: (typeof rooms)[number]) => ({
       id: room.id,
       name: room.name,
       privacy: mapPrivacy(room.privacy),
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
     },
   });
   await prisma.channel.createMany({
-    data: getDefaultChannels().map((channel) => ({
+    data: getDefaultChannels().map((channel: ReturnType<typeof getDefaultChannels>[number]) => ({
       roomId: room.id,
       name: channel.name,
       slug: channel.slug,

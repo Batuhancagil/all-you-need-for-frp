@@ -51,7 +51,7 @@ export async function GET(
             if (nextMessages.length === 0) return;
 
             cursor = nextMessages[nextMessages.length - 1].createdAt;
-            const payload = nextMessages.map((message) => ({
+            const payload = nextMessages.map((message: (typeof nextMessages)[number]) => ({
               id: message.id,
               content: message.content,
               createdAt: message.createdAt.toISOString(),

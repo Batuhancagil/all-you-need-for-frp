@@ -324,11 +324,12 @@ export default function RoomPage() {
         setChannelsError(payload.error?.message ?? "Could not load channels");
         return;
       }
-      setChannels(payload.data.channels);
+      const nextChannels = payload.data.channels;
+      setChannels(nextChannels);
       setSelectedChannelId((prev) => {
         if (prev) return prev;
-        const firstText = payload.data.channels.find((channel) => channel.type === "text");
-        const firstVoice = payload.data.channels.find((channel) => channel.type === "voice");
+        const firstText = nextChannels.find((channel) => channel.type === "text");
+        const firstVoice = nextChannels.find((channel) => channel.type === "voice");
         return firstText?.id ?? firstVoice?.id ?? null;
       });
     }

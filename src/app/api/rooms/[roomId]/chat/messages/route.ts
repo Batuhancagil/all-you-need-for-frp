@@ -28,7 +28,7 @@ export async function GET(
   });
 
   return ok({
-    messages: messages.map((message) => ({
+    messages: messages.map((message: (typeof messages)[number]) => ({
       id: message.id,
       content: message.content,
       createdAt: message.createdAt.toISOString(),
