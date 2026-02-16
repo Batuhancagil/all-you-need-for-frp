@@ -2,6 +2,7 @@ import { ok, fail } from "@/server/api";
 import { prisma } from "@/server/db";
 import { createUniqueInviteCode } from "@/server/room-utils";
 import { mapPrivacy, mapSessionState } from "@/server/room-mappers";
+import { getDefaultChannels } from "@/server/channel-utils";
 import { RoomPrivacy } from "@prisma/client";
 
 export async function GET() {
@@ -60,6 +61,14 @@ export async function POST(request: Request) {
       name: adminName,
       role: "ADMIN",
     },
+  });
+  await prisma.channel.createMany({
+    data: getDefaultChannels().map((channel) => ({
+      roomId: room.id,
+      name: channel.name,
+      slug: channel.slug,
+      type: channel.type,
+    })),
   });
 
   return ok({

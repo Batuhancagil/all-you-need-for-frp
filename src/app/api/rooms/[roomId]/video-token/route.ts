@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { AccessToken } from "livekit-server-sdk";
 import { ok, fail } from "@/server/api";
 import { prisma } from "@/server/db";
-import { buildVideoRoomName } from "@/lib/video-room";
+import { buildVideoChannelRoomName, buildVideoRoomName } from "@/lib/video-room";
 
 const LIVEKIT_TOKEN_TTL_SECONDS = 60 * 60 * 12;
 const LIVEKIT_TOKEN_TTL = "12h";
@@ -14,6 +14,7 @@ export async function POST(
   const { roomId } = await params;
   const body = await request.json().catch(() => null);
   const participantId = body?.participantId as string | undefined;
+  const channelSlug = body?.channelSlug as string | undefined;
 
   if (!participantId) {
     return fail("missing_fields", "participantId is required");
@@ -32,7 +33,19 @@ export async function POST(
     return fail("participant_not_found", "Participant not found", 404);
   }
 
-  const roomName = buildVideoRoomName(roomId);
+  const roomName = channelSlug
+    ? buildVideoChannelRoomName(roomId, channelSlug)
+    : buildVideoRoomName(roomId);
+
+  if (channelSlug) {
+    const voiceChannel = await prisma.channel.findFirst({
+      where: { roomId, slug: channelSlug, type: "VOICE" },
+      select: { id: true },
+    });
+    if (!voiceChannel) {
+      return fail("channel_not_found", "Voice channel not found", 404);
+    }
+  }
   const token = new AccessToken(apiKey, apiSecret, {
     identity: participant.id,
     name: participant.name,

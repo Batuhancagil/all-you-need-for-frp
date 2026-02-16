@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { LiveKitRoom, VideoConference } from "@livekit/components-react";
+import { LiveKitRoom, VideoConference, useLocalParticipant } from "@livekit/components-react";
 import "@livekit/components-styles";
-import { buildVideoRoomName } from "@/lib/video-room";
+import { Track } from "livekit-client";
+import { buildVideoChannelRoomName, buildVideoRoomName } from "@/lib/video-room";
 
 type ApiResponse<T> = {
   data: T | null;
@@ -32,7 +33,157 @@ type Roll = {
   createdAt: string;
 };
 
+type Channel = {
+  id: string;
+  name: string;
+  slug: string;
+  type: "text" | "voice";
+};
+
+type ChatMessage = {
+  id: string;
+  content: string;
+  createdAt: string;
+  participant: {
+    id: string;
+    name: string;
+    role: "gm" | "player" | "admin";
+  };
+};
+
 const LIVEKIT_URL = process.env.NEXT_PUBLIC_LIVEKIT_URL ?? "";
+const PTT_KEY_OPTIONS = [
+  { code: "Space", label: "Space" },
+  { code: "KeyV", label: "V" },
+  { code: "KeyF", label: "F" },
+  { code: "KeyT", label: "T" },
+  { code: "ShiftLeft", label: "Left Shift" },
+] as const;
+
+function getPttKeyLabel(code: string) {
+  const found = PTT_KEY_OPTIONS.find((option) => option.code === code);
+  if (found) return found.label;
+  if (code.startsWith("Key")) return code.slice(3).toUpperCase();
+  return code;
+}
+
+function VoiceRuntimeControls({
+  mode,
+  pttKeyCode,
+  noiseThreshold,
+}: {
+  mode: "always" | "ptt";
+  pttKeyCode: string;
+  noiseThreshold: number;
+}) {
+  const { localParticipant } = useLocalParticipant();
+  const [pttActive, setPttActive] = useState(false);
+  const [inputLevel, setInputLevel] = useState(0);
+  const [isNoiseOpen, setIsNoiseOpen] = useState(true);
+
+  useEffect(() => {
+    let analyser: AnalyserNode | null = null;
+    let context: AudioContext | null = null;
+    let source: MediaStreamAudioSourceNode | null = null;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    let lowFrames = 0;
+    let highFrames = 0;
+
+    async function startMeter() {
+      const pub = localParticipant.getTrackPublication(Track.Source.Microphone);
+      const micTrack = pub?.track;
+      if (!micTrack) return;
+      const mediaTrack = micTrack.mediaStreamTrack;
+      if (!mediaTrack) return;
+
+      context = new AudioContext();
+      analyser = context.createAnalyser();
+      analyser.fftSize = 256;
+      source = context.createMediaStreamSource(new MediaStream([mediaTrack]));
+      source.connect(analyser);
+      const data = new Uint8Array(analyser.fftSize);
+      const threshold = Math.max(0.005, noiseThreshold / 100);
+
+      timer = setInterval(() => {
+        if (!analyser) return;
+        analyser.getByteTimeDomainData(data);
+        let sumSquares = 0;
+        for (let i = 0; i < data.length; i += 1) {
+          const normalized = (data[i] - 128) / 128;
+          sumSquares += normalized * normalized;
+        }
+        const rms = Math.sqrt(sumSquares / data.length);
+        setInputLevel(rms);
+
+        if (rms >= threshold) {
+          highFrames += 1;
+          lowFrames = 0;
+        } else {
+          lowFrames += 1;
+          highFrames = 0;
+        }
+
+        if (highFrames >= 2) setIsNoiseOpen(true);
+        if (lowFrames >= 5) setIsNoiseOpen(false);
+      }, 120);
+    }
+
+    void startMeter();
+    return () => {
+      if (timer) clearInterval(timer);
+      source?.disconnect();
+      if (context && context.state !== "closed") void context.close();
+    };
+  }, [localParticipant, noiseThreshold]);
+
+  useEffect(() => {
+    if (mode !== "ptt") return;
+
+    const isTypingTarget = (eventTarget: EventTarget | null) => {
+      const node = eventTarget as HTMLElement | null;
+      if (!node) return false;
+      const tag = node.tagName.toLowerCase();
+      return tag === "input" || tag === "textarea" || node.isContentEditable;
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== pttKeyCode) return;
+      if (isTypingTarget(event.target)) return;
+      if (event.repeat) return;
+      event.preventDefault();
+      setPttActive(true);
+    };
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.code !== pttKeyCode) return;
+      if (isTypingTarget(event.target)) return;
+      event.preventDefault();
+      setPttActive(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, [mode, pttKeyCode]);
+
+  useEffect(() => {
+    const shouldEnable = mode === "ptt" ? pttActive : isNoiseOpen;
+    void localParticipant.setMicrophoneEnabled(shouldEnable);
+  }, [isNoiseOpen, localParticipant, mode, pttActive]);
+
+  return (
+    <div className="pointer-events-none absolute bottom-16 left-2 z-40 rounded-lg bg-black/60 px-2 py-1 text-[10px] text-white">
+      <span>Input {Math.round(inputLevel * 100)}</span>
+      <span className="mx-2">|</span>
+      {mode === "ptt" ? (
+        <span>{pttActive ? "PTT live" : `Hold ${getPttKeyLabel(pttKeyCode)}`}</span>
+      ) : (
+        <span>{isNoiseOpen ? "Mic open" : "Noise gate closed"}</span>
+      )}
+    </div>
+  );
+}
 
 export default function RoomPage() {
   const params = useParams();
@@ -63,6 +214,16 @@ export default function RoomPage() {
   const [callFrameReady, setCallFrameReady] = useState(false);
   const [callToken, setCallToken] = useState<string | null>(null);
   const [callError, setCallError] = useState<string | null>(null);
+  const [channels, setChannels] = useState<Channel[]>([]);
+  const [channelsError, setChannelsError] = useState<string | null>(null);
+  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatError, setChatError] = useState<string | null>(null);
+  const chatMessagesRef = useRef<ChatMessage[]>([]);
+  const [audioMode, setAudioMode] = useState<"always" | "ptt">("always");
+  const [pttKeyCode, setPttKeyCode] = useState<string>("Space");
+  const [noiseThreshold, setNoiseThreshold] = useState(5);
   const [diceSides, setDiceSides] = useState(20);
   const [diceCount, setDiceCount] = useState(1);
   const [diceError, setDiceError] = useState<string | null>(null);
@@ -86,7 +247,22 @@ export default function RoomPage() {
     () => participants.filter((person) => person.inCall),
     [participants]
   );
-  const callRoomName = useMemo(() => buildVideoRoomName(roomId), [roomId]);
+  const textChannels = useMemo(() => channels.filter((channel) => channel.type === "text"), [channels]);
+  const voiceChannels = useMemo(() => channels.filter((channel) => channel.type === "voice"), [channels]);
+  const selectedChannel = useMemo(
+    () => channels.find((channel) => channel.id === selectedChannelId) ?? channels[0] ?? null,
+    [channels, selectedChannelId]
+  );
+  const activeVoiceChannel = useMemo(() => {
+    if (selectedChannel?.type === "voice") return selectedChannel;
+    return voiceChannels[0] ?? null;
+  }, [selectedChannel, voiceChannels]);
+  const callRoomName = useMemo(() => {
+    if (activeVoiceChannel) {
+      return buildVideoChannelRoomName(roomId, activeVoiceChannel.slug);
+    }
+    return buildVideoRoomName(roomId);
+  }, [activeVoiceChannel, roomId]);
 
   useEffect(() => {
     if (status !== "authenticated") return;
@@ -141,9 +317,26 @@ export default function RoomPage() {
       }
     }
 
+    async function loadChannels() {
+      const res = await fetch(`/api/rooms/${roomId}/channels`);
+      const payload = (await res.json()) as ApiResponse<{ channels: Channel[] }>;
+      if (payload.error || !payload.data) {
+        setChannelsError(payload.error?.message ?? "Could not load channels");
+        return;
+      }
+      setChannels(payload.data.channels);
+      setSelectedChannelId((prev) => {
+        if (prev) return prev;
+        const firstText = payload.data.channels.find((channel) => channel.type === "text");
+        const firstVoice = payload.data.channels.find((channel) => channel.type === "voice");
+        return firstText?.id ?? firstVoice?.id ?? null;
+      });
+    }
+
     loadRoom();
     loadParticipants();
     loadRolls();
+    loadChannels();
 
     interval = setInterval(() => {
       loadParticipants();
@@ -161,6 +354,50 @@ export default function RoomPage() {
       if (interval) clearInterval(interval);
     };
   }, [roomId, participantId, status]);
+
+  useEffect(() => {
+    if (selectedChannel?.type !== "text") return;
+    fetch(`/api/rooms/${roomId}/chat/messages?channelId=${selectedChannel.id}`)
+      .then((res) => res.json())
+      .then((payload: ApiResponse<{ messages: ChatMessage[] }>) => {
+        if (payload.error || !payload.data) {
+          setChatError(payload.error?.message ?? "Could not load chat");
+          return;
+        }
+        setChatError(null);
+        setChatMessages(payload.data.messages);
+      });
+  }, [roomId, selectedChannel]);
+
+  useEffect(() => {
+    chatMessagesRef.current = chatMessages;
+  }, [chatMessages]);
+
+  useEffect(() => {
+    if (selectedChannel?.type !== "text") return;
+
+    const since = chatMessagesRef.current[chatMessagesRef.current.length - 1]?.createdAt ?? new Date().toISOString();
+    const stream = new EventSource(
+      `/api/rooms/${roomId}/chat/stream?channelId=${selectedChannel.id}&since=${encodeURIComponent(since)}`
+    );
+    stream.addEventListener("messages", (event) => {
+      const payload = JSON.parse((event as MessageEvent<string>).data) as ChatMessage[];
+      setChatMessages((prev) => {
+        const seen = new Set(prev.map((msg) => msg.id));
+        const next = [...prev];
+        payload.forEach((msg) => {
+          if (!seen.has(msg.id)) next.push(msg);
+        });
+        return next.slice(-200);
+      });
+    });
+    stream.onerror = () => {
+      stream.close();
+    };
+    return () => {
+      stream.close();
+    };
+  }, [roomId, selectedChannel]);
 
   async function joinViaInvite() {
     setError(null);
@@ -290,7 +527,7 @@ export default function RoomPage() {
       const res = await fetch(`/api/rooms/${roomId}/video-token`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ participantId }),
+        body: JSON.stringify({ participantId, channelSlug: activeVoiceChannel?.slug }),
       });
       const payload = (await res.json()) as ApiResponse<{ token: string }>;
       if (payload.error || !payload.data) {
@@ -312,6 +549,32 @@ export default function RoomPage() {
     setCallFrameReady(false);
     setCallToken(null);
     await updateCallState({ inCall: false, micOn: false, camOn: false });
+  }
+
+  async function sendChatMessage() {
+    setChatError(null);
+    if (!participantId || selectedChannel?.type !== "text") return;
+    if (!chatInput.trim()) return;
+
+    const res = await fetch(`/api/rooms/${roomId}/chat/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channelId: selectedChannel.id,
+        participantId,
+        content: chatInput,
+      }),
+    });
+    const payload = (await res.json()) as ApiResponse<{ message: ChatMessage }>;
+    if (payload.error || !payload.data) {
+      setChatError(payload.error?.message ?? "Could not send message");
+      return;
+    }
+    setChatInput("");
+    setChatMessages((prev) => {
+      const exists = prev.some((msg) => msg.id === payload.data!.message.id);
+      return exists ? prev : [...prev, payload.data!.message].slice(-200);
+    });
   }
 
   async function handleCopyInviteCode() {
@@ -419,6 +682,135 @@ export default function RoomPage() {
           </div>
         ) : null}
 
+        <section className="grid gap-6 lg:grid-cols-[260px_1fr]">
+          <aside className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.1em] text-zinc-500">Channels</p>
+            <div className="mt-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-400">Text Channels</p>
+              <div className="mt-2 space-y-1">
+                {textChannels.map((channel) => (
+                  <button
+                    key={channel.id}
+                    className={`flex w-full items-center rounded-lg px-2 py-1.5 text-left text-sm ${
+                      selectedChannel?.id === channel.id ? "bg-zinc-900 text-white" : "hover:bg-zinc-100"
+                    }`}
+                    onClick={() => setSelectedChannelId(channel.id)}
+                  >
+                    #{channel.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="mt-5">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-400">Voice Channels</p>
+              <div className="mt-2 space-y-1">
+                {voiceChannels.map((channel) => (
+                  <button
+                    key={channel.id}
+                    className={`flex w-full items-center rounded-lg px-2 py-1.5 text-left text-sm ${
+                      selectedChannel?.id === channel.id ? "bg-zinc-900 text-white" : "hover:bg-zinc-100"
+                    }`}
+                    onClick={() => setSelectedChannelId(channel.id)}
+                  >
+                    🔊 {channel.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {channelsError ? <p className="mt-3 text-xs text-amber-600">{channelsError}</p> : null}
+          </aside>
+          <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+            {selectedChannel?.type === "text" ? (
+              <div>
+                <h3 className="text-base font-semibold">#{selectedChannel.name}</h3>
+                <div className="mt-3 h-64 overflow-y-auto rounded-lg border border-zinc-200 bg-zinc-50 p-3">
+                  {chatMessages.length === 0 ? (
+                    <p className="text-xs text-zinc-500">No messages yet.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {chatMessages.map((message) => (
+                        <div key={message.id} className="rounded-lg border border-zinc-200 bg-white px-3 py-2">
+                          <p className="text-xs font-semibold">
+                            {message.participant.name}
+                            <span className="ml-2 text-[10px] uppercase text-zinc-400">{message.participant.role}</span>
+                          </p>
+                          <p className="mt-1 text-sm text-zinc-800">{message.content}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <input
+                    className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                    value={chatInput}
+                    placeholder={`Message #${selectedChannel.name}`}
+                    onChange={(event) => setChatInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        void sendChatMessage();
+                      }
+                    }}
+                  />
+                  <button
+                    className="rounded-full bg-zinc-900 px-4 py-2 text-xs font-semibold text-white"
+                    onClick={sendChatMessage}
+                  >
+                    Send
+                  </button>
+                </div>
+                {chatError ? <p className="mt-2 text-xs text-amber-600">{chatError}</p> : null}
+              </div>
+            ) : (
+              <div>
+                <h3 className="text-base font-semibold">🔊 {activeVoiceChannel?.name ?? "voice"}</h3>
+                <p className="mt-2 text-sm text-zinc-500">
+                  Selected voice channel. Use Join call below to enter this channel.
+                </p>
+                <div className="mt-3 grid gap-3 md:grid-cols-3">
+                  <label className="text-xs font-semibold text-zinc-600">
+                    Audio mode
+                    <select
+                      className="mt-1 w-full rounded-lg border border-zinc-200 px-2 py-1.5 text-xs"
+                      value={audioMode}
+                      onChange={(event) => setAudioMode(event.target.value as "always" | "ptt")}
+                    >
+                      <option value="always">Always on + Noise gate</option>
+                      <option value="ptt">Push to talk</option>
+                    </select>
+                  </label>
+                  <label className="text-xs font-semibold text-zinc-600">
+                    Push-to-talk key
+                    <select
+                      className="mt-1 w-full rounded-lg border border-zinc-200 px-2 py-1.5 text-xs"
+                      value={pttKeyCode}
+                      onChange={(event) => setPttKeyCode(event.target.value)}
+                    >
+                      {PTT_KEY_OPTIONS.map((option) => (
+                        <option key={option.code} value={option.code}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-xs font-semibold text-zinc-600">
+                    Noise threshold
+                    <input
+                      type="range"
+                      min={1}
+                      max={50}
+                      value={noiseThreshold}
+                      className="mt-2 w-full"
+                      onChange={(event) => setNoiseThreshold(Number(event.target.value))}
+                    />
+                  </label>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+
         <section className="grid gap-6 lg:grid-cols-[2fr_1fr]">
           <div className="space-y-6">
             <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
@@ -460,7 +852,9 @@ export default function RoomPage() {
                   </button>
                 )}
                 <span className="text-xs text-zinc-500">
-                  {callJoined ? "Use call controls inside the video window." : "Join to open live call."}
+                  {callJoined
+                    ? `Use call controls inside the video window (${activeVoiceChannel?.name ?? "voice"}).`
+                    : "Join to open live call."}
                 </span>
                 {callJoined ? (
                   <span
@@ -492,6 +886,11 @@ export default function RoomPage() {
                         onDisconnected={() => setCallFrameReady(false)}
                         onError={(liveKitError) => setCallError(liveKitError.message)}
                       >
+                        <VoiceRuntimeControls
+                          mode={audioMode}
+                          pttKeyCode={pttKeyCode}
+                          noiseThreshold={noiseThreshold}
+                        />
                         <VideoConference />
                       </LiveKitRoom>
                     </div>

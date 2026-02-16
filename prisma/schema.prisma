@@ -71,6 +71,11 @@ enum ParticipantRole {
   PLAYER
 }
 
+enum ChannelType {
+  TEXT
+  VOICE
+}
+
 model AdminSettings {
   id             String       @id @default("singleton")
   roomNamePrefix String?
@@ -94,6 +99,8 @@ model Room {
 
   participants    Participant[]
   rolls           Roll[]
+  channels        Channel[]
+  chatMessages    ChatMessage[]
 }
 
 model Participant {
@@ -109,6 +116,7 @@ model Participant {
 
   room  Room  @relation(fields: [roomId], references: [id], onDelete: Cascade)
   rolls Roll[]
+  chatMessages ChatMessage[]
 
   gmRoom Room? @relation("RoomGm")
 }
@@ -126,4 +134,34 @@ model Roll {
 
   room        Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
   participant Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+}
+
+model Channel {
+  id        String      @id @default(cuid())
+  roomId    String
+  name      String
+  slug      String
+  type      ChannelType
+  createdAt DateTime    @default(now())
+
+  room         Room          @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  chatMessages ChatMessage[]
+
+  @@unique([roomId, slug, type])
+  @@index([roomId, type])
+}
+
+model ChatMessage {
+  id            String   @id @default(cuid())
+  roomId        String
+  channelId     String
+  participantId String
+  content       String
+  createdAt     DateTime @default(now())
+
+  room        Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  channel     Channel     @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  participant Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, channelId, createdAt])
 }

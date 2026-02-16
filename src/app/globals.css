@@ -42,3 +42,11 @@ body {
   bottom: 0;
   z-index: 30;
 }
+
+.call-room .lk-participant-tile {
+  aspect-ratio: 16 / 9;
+}
+
+.call-room .lk-participant-media-video {
+  object-fit: cover;
+}

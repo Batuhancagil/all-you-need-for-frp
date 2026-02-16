@@ -6,22 +6,18 @@ export default function Home() {
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
             AllYouNeedForFRP
           </p>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight">Tabletop room, simplified</h1>
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight">
+            Roll dice. Keep secrets. Blame the goblin.
+          </h1>
           <p className="mt-3 text-sm text-zinc-600">
-            Sign in, join with an invite code, and jump straight into your session.
+            Minimal room setup with voice, video, and chat channels. No account dance, just magic link.
           </p>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
             <a
               className="inline-flex h-11 items-center justify-center rounded-full bg-zinc-900 px-6 text-sm font-semibold text-white"
               href="/join"
             >
-              Sign in to continue
-            </a>
-            <a
-              className="inline-flex h-11 items-center justify-center rounded-full border border-zinc-200 px-6 text-sm font-semibold text-zinc-700"
-              href="/account"
-            >
-              Account
+              Enter tavern
             </a>
           </div>
         </section>

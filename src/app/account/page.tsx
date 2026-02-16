@@ -58,13 +58,6 @@ export default function AccountPage() {
         <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold">Magic link sign-in</h2>
           <div className="mt-4 flex flex-col gap-3">
-            <button
-              className="rounded-full border border-zinc-200 px-4 py-2 text-xs font-semibold text-zinc-900"
-              onClick={() => signIn("google", { callbackUrl: "/account" })}
-            >
-              Continue with Google
-            </button>
-            <p className="text-center text-xs uppercase tracking-wide text-zinc-400">or</p>
             <input
               className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
               placeholder="you@example.com"
