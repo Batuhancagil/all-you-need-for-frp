@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { signIn, signOut, useSession } from "next-auth/react";
 
@@ -14,36 +14,16 @@ const RECENT_KEY = "aynfrp:recentRooms";
 
 export default function AccountPage() {
   const { data: session, status } = useSession();
-  const [email, setEmail] = useState("");
-  const [linkSent, setLinkSent] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [recentRooms, setRecentRooms] = useState<RecentRoom[]>([]);
-
-  useEffect(() => {
+  const [recentRooms] = useState<RecentRoom[]>(() => {
+    if (typeof window === "undefined") return [];
     const storedRooms = localStorage.getItem(RECENT_KEY);
-    if (storedRooms) {
-      setRecentRooms(JSON.parse(storedRooms));
-    }
-  }, []);
-
-  async function sendMagicLink() {
-    if (!email.trim()) return;
-    setError(null);
-    setLinkSent(false);
+    if (!storedRooms) return [];
     try {
-      const res = await signIn("email", {
-        email: email.trim(),
-        callbackUrl: "/account",
-        redirect: false,
-      });
-      if (res?.error) {
-        throw new Error(res.error);
-      }
-      setLinkSent(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to send magic link");
+      return JSON.parse(storedRooms) as RecentRoom[];
+    } catch {
+      return [];
     }
-  }
+  });
 
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900">
@@ -51,25 +31,21 @@ export default function AccountPage() {
         <header>
           <h1 className="text-3xl font-semibold">Account</h1>
           <p className="mt-2 text-sm text-zinc-600">
-            Create an optional account to keep your recent sessions.
+            Manage your sign-in and quick links.
           </p>
         </header>
 
         <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold">Magic link sign-in</h2>
+          <h2 className="text-lg font-semibold">Google sign-in</h2>
           <div className="mt-4 flex flex-col gap-3">
-            <input
-              className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-            />
-            <button
-              className="rounded-full bg-zinc-900 px-4 py-2 text-xs font-semibold text-white"
-              onClick={sendMagicLink}
-            >
-              Send magic link
-            </button>
+            {status !== "authenticated" ? (
+              <button
+                className="rounded-full bg-zinc-900 px-4 py-2 text-xs font-semibold text-white"
+                onClick={() => signIn("google", { callbackUrl: "/account" })}
+              >
+                Continue with Google
+              </button>
+            ) : null}
             {status === "authenticated" ? (
               <div className="flex flex-wrap items-center gap-3">
                 <p className="text-xs text-emerald-600">
@@ -83,15 +59,9 @@ export default function AccountPage() {
                 </button>
               </div>
             ) : null}
-            {linkSent ? (
-              <p className="text-xs text-emerald-600">
-                Check your inbox for the magic link.
-              </p>
-            ) : null}
             {status === "loading" ? (
               <p className="text-xs text-zinc-500">Checking session...</p>
             ) : null}
-            {error ? <p className="text-xs text-red-600">{error}</p> : null}
           </div>
         </section>
 

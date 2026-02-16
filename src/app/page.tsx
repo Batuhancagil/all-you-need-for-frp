@@ -10,7 +10,7 @@ export default function Home() {
             Roll dice. Keep secrets. Blame the goblin.
           </h1>
           <p className="mt-3 text-sm text-zinc-600">
-            Minimal room setup with voice, video, and chat channels. No account dance, just magic link.
+            Minimal room setup with voice, video, and chat channels. Jump in with Google and start playing.
           </p>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
             <a

@@ -38,7 +38,6 @@ export default function JoinPage() {
   const [roomName, setRoomName] = useState("");
   const [privacy, setPrivacy] = useState<"private" | "public">("private");
   const [error, setError] = useState<string | null>(null);
-  const [signInEmail, setSignInEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [publicRoomsLoading, setPublicRoomsLoading] = useState(false);
   const [recentRooms, setRecentRooms] = useState<RecentRoom[]>(() => {
@@ -51,7 +50,6 @@ export default function JoinPage() {
       return [];
     }
   });
-  const [linkSent, setLinkSent] = useState(false);
   const [publicRooms, setPublicRooms] = useState<PublicRoom[]>([]);
 
   const canJoin = useMemo(() => {
@@ -188,22 +186,6 @@ export default function JoinPage() {
     router.push(`/room/${room.roomId}?invite=${room.inviteCode}`);
   }
 
-  async function handleSendMagicLink() {
-    setError(null);
-    setLinkSent(false);
-    if (!signInEmail.trim()) return;
-    const result = await signIn("email", {
-      email: signInEmail.trim(),
-      callbackUrl: "/join",
-      redirect: false,
-    });
-    if (result?.error) {
-      setError(result.error);
-      return;
-    }
-    setLinkSent(true);
-  }
-
   if (status === "loading") {
     return (
       <div className="min-h-screen bg-zinc-50 text-zinc-900">
@@ -221,7 +203,7 @@ export default function JoinPage() {
           <header>
             <h1 className="text-3xl font-semibold">Sign in to join</h1>
             <p className="mt-2 text-sm text-zinc-600">
-              We use a magic link to keep joining and room management clean.
+              Use Google to continue.
             </p>
           </header>
           {error ? (
@@ -230,23 +212,14 @@ export default function JoinPage() {
             </div>
           ) : null}
           <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold">Magic link</h2>
+            <h2 className="text-lg font-semibold">Google sign-in</h2>
             <div className="mt-4 flex flex-col gap-3">
-              <input
-                className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
-                placeholder="you@example.com"
-                value={signInEmail}
-                onChange={(event) => setSignInEmail(event.target.value)}
-              />
               <button
                 className="inline-flex h-11 items-center justify-center rounded-full bg-zinc-900 px-4 text-sm font-semibold text-white"
-                onClick={handleSendMagicLink}
+                onClick={() => signIn("google", { callbackUrl: "/join" })}
               >
-                Send sign-in link
+                Continue with Google
               </button>
-              {linkSent ? (
-                <p className="text-xs text-emerald-600">Magic link sent. Check your inbox.</p>
-              ) : null}
             </div>
           </section>
         </main>
