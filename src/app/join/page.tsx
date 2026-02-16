@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { signIn, signOut, useSession } from "next-auth/react";
 
 type RecentRoom = {
   roomId: string;
   inviteCode: string;
   name: string;
-  role?: "gm" | "player" | "admin";
 };
 
 type ApiResponse<T> = {
@@ -17,40 +17,39 @@ type ApiResponse<T> = {
 
 const RECENT_KEY = "aynfrp:recentRooms";
 const NAME_KEY = "aynfrp:lastName";
-const ROLE_KEY = "aynfrp:isAdmin";
 
 export default function JoinPage() {
   const router = useRouter();
+  const { data: session, status } = useSession();
   const [inviteCode, setInviteCode] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [adminName, setAdminName] = useState("");
+  const [displayName, setDisplayName] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return localStorage.getItem(NAME_KEY) ?? "";
+  });
   const [roomName, setRoomName] = useState("");
   const [privacy, setPrivacy] = useState<"private" | "public">("private");
   const [error, setError] = useState<string | null>(null);
+  const [signInEmail, setSignInEmail] = useState("");
   const [loading, setLoading] = useState(false);
-  const [recentRooms, setRecentRooms] = useState<RecentRoom[]>([]);
-  const [isAdminMode, setIsAdminMode] = useState(false);
-
-  useEffect(() => {
-    const storedName = localStorage.getItem(NAME_KEY);
-    if (storedName) {
-      setDisplayName(storedName);
-      setAdminName(storedName);
-    }
+  const [recentRooms, setRecentRooms] = useState<RecentRoom[]>(() => {
+    if (typeof window === "undefined") return [];
     const storedRooms = localStorage.getItem(RECENT_KEY);
-    if (storedRooms) {
-      setRecentRooms(JSON.parse(storedRooms));
+    if (!storedRooms) return [];
+    try {
+      return JSON.parse(storedRooms) as RecentRoom[];
+    } catch {
+      return [];
     }
-    setIsAdminMode(localStorage.getItem(ROLE_KEY) === "true");
-  }, []);
+  });
+  const [linkSent, setLinkSent] = useState(false);
 
   const canJoin = useMemo(() => {
     return inviteCode.trim().length > 0 && displayName.trim().length > 0;
   }, [inviteCode, displayName]);
 
   const canCreate = useMemo(() => {
-    return roomName.trim().length > 0 && adminName.trim().length > 0;
-  }, [roomName, adminName]);
+    return roomName.trim().length > 0 && displayName.trim().length > 0;
+  }, [roomName, displayName]);
 
   function updateRecent(room: RecentRoom) {
     const next = [room, ...recentRooms.filter((r) => r.roomId !== room.roomId)].slice(0, 5);
@@ -60,7 +59,7 @@ export default function JoinPage() {
 
   async function handleJoin() {
     setError(null);
-    if (!canJoin) return;
+    if (!canJoin || status !== "authenticated") return;
     setLoading(true);
     try {
       const res = await fetch("/api/rooms/join", {
@@ -83,7 +82,6 @@ export default function JoinPage() {
         roomId: payload.data.roomId,
         inviteCode: inviteCode.trim().toUpperCase(),
         name: displayName.trim(),
-        role: payload.data.participant.role,
       });
       localStorage.setItem(
         `aynfrp:room:${payload.data.roomId}:participant`,
@@ -103,7 +101,7 @@ export default function JoinPage() {
 
   async function handleCreate() {
     setError(null);
-    if (!canCreate) return;
+    if (!canCreate || status !== "authenticated") return;
     setLoading(true);
     try {
       const res = await fetch("/api/rooms", {
@@ -112,7 +110,7 @@ export default function JoinPage() {
         body: JSON.stringify({
           name: roomName.trim(),
           privacy,
-          adminName: adminName.trim(),
+          adminName: displayName.trim(),
         }),
       });
       const payload = (await res.json()) as ApiResponse<{
@@ -123,21 +121,18 @@ export default function JoinPage() {
       if (payload.error || !payload.data) {
         throw new Error(payload.error?.message ?? "Unable to create room");
       }
-      localStorage.setItem(NAME_KEY, adminName.trim());
+      localStorage.setItem(NAME_KEY, displayName.trim());
       updateRecent({
         roomId: payload.data.roomId,
         inviteCode: payload.data.inviteCode,
         name: roomName.trim(),
-        role: "admin",
       });
       localStorage.setItem(
         `aynfrp:room:${payload.data.roomId}:participant`,
         payload.data.adminParticipantId
       );
       localStorage.setItem(`aynfrp:room:${payload.data.roomId}:role`, "admin");
-      router.push(
-        `/room/${payload.data.roomId}?pid=${payload.data.adminParticipantId}&role=admin`
-      );
+      router.push(`/room/${payload.data.roomId}?pid=${payload.data.adminParticipantId}`);
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "Unable to create room");
     } finally {
@@ -149,10 +144,77 @@ export default function JoinPage() {
     router.push(`/room/${room.roomId}?invite=${room.inviteCode}`);
   }
 
-  function toggleAdminMode() {
-    const next = !isAdminMode;
-    setIsAdminMode(next);
-    localStorage.setItem(ROLE_KEY, next ? "true" : "false");
+  async function handleSendMagicLink() {
+    setError(null);
+    setLinkSent(false);
+    if (!signInEmail.trim()) return;
+    const result = await signIn("email", {
+      email: signInEmail.trim(),
+      callbackUrl: "/join",
+      redirect: false,
+    });
+    if (result?.error) {
+      setError(result.error);
+      return;
+    }
+    setLinkSent(true);
+  }
+
+  if (status === "loading") {
+    return (
+      <div className="min-h-screen bg-zinc-50 text-zinc-900">
+        <main className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-6 py-16">
+          <p className="text-sm text-zinc-600">Checking sign-in status...</p>
+        </main>
+      </div>
+    );
+  }
+
+  if (status !== "authenticated") {
+    return (
+      <div className="min-h-screen bg-zinc-50 text-zinc-900">
+        <main className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-6 py-16">
+          <header>
+            <h1 className="text-3xl font-semibold">Sign in to join</h1>
+            <p className="mt-2 text-sm text-zinc-600">
+              We use a magic link to keep joining and room management clean.
+            </p>
+          </header>
+          {error ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          ) : null}
+          <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold">Magic link</h2>
+            <div className="mt-4 flex flex-col gap-3">
+              <button
+                className="inline-flex h-11 items-center justify-center rounded-full border border-zinc-200 px-4 text-sm font-semibold text-zinc-900"
+                onClick={() => signIn("google", { callbackUrl: "/join" })}
+              >
+                Continue with Google
+              </button>
+              <p className="text-center text-xs uppercase tracking-wide text-zinc-400">or</p>
+              <input
+                className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                placeholder="you@example.com"
+                value={signInEmail}
+                onChange={(event) => setSignInEmail(event.target.value)}
+              />
+              <button
+                className="inline-flex h-11 items-center justify-center rounded-full bg-zinc-900 px-4 text-sm font-semibold text-white"
+                onClick={handleSendMagicLink}
+              >
+                Send sign-in link
+              </button>
+              {linkSent ? (
+                <p className="text-xs text-emerald-600">Magic link sent. Check your inbox.</p>
+              ) : null}
+            </div>
+          </section>
+        </main>
+      </div>
+    );
   }
 
   return (
@@ -163,6 +225,12 @@ export default function JoinPage() {
           <p className="mt-2 text-sm text-zinc-600">
             Enter an invite code or create a room to get started.
           </p>
+          <div className="mt-3 flex items-center gap-3 text-xs text-zinc-500">
+            <span>Signed in as {session.user?.email ?? "account"}.</span>
+            <button className="underline" onClick={() => signOut({ callbackUrl: "/join" })}>
+              Sign out
+            </button>
+          </div>
         </header>
 
         {error ? (
@@ -216,12 +284,12 @@ export default function JoinPage() {
                 />
               </label>
               <label className="text-sm font-semibold text-zinc-600">
-                Your name (admin)
+                Your name
                 <input
                   className="mt-2 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
-                  placeholder="Admin name"
-                  value={adminName}
-                  onChange={(event) => setAdminName(event.target.value)}
+                  placeholder="Host name"
+                  value={displayName}
+                  onChange={(event) => setDisplayName(event.target.value)}
                 />
               </label>
               <label className="text-sm font-semibold text-zinc-600">
@@ -247,18 +315,9 @@ export default function JoinPage() {
         </section>
 
         <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-semibold">Recent sessions</h2>
-              <p className="text-sm text-zinc-600">Rejoin quickly with one click.</p>
-            </div>
-            <button
-              className="text-xs font-semibold uppercase tracking-wide text-zinc-500"
-              onClick={toggleAdminMode}
-              type="button"
-            >
-              {isAdminMode ? "Admin mode on" : "Enable admin mode"}
-            </button>
+          <div>
+            <h2 className="text-lg font-semibold">Recent sessions</h2>
+            <p className="text-sm text-zinc-600">Rejoin quickly with one click.</p>
           </div>
           {recentRooms.length === 0 ? (
             <p className="mt-4 text-sm text-zinc-500">

@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 
 type ApiResponse<T> = {
   data: T | null;
@@ -30,7 +31,9 @@ type Roll = {
 
 export default function RoomPage() {
   const params = useParams();
+  const router = useRouter();
   const search = useSearchParams();
+  const { status } = useSession();
   const roomId = params.roomId as string;
   const [room, setRoom] = useState<{
     id: string;
@@ -85,15 +88,23 @@ export default function RoomPage() {
   }, [roomId]);
 
   useEffect(() => {
+    if (status !== "authenticated") return;
     if (queryParticipantId) {
       localStorage.setItem(`aynfrp:room:${roomId}:participant`, queryParticipantId);
     }
     if (queryRole === "gm" || queryRole === "admin" || queryRole === "player") {
       localStorage.setItem(`aynfrp:room:${roomId}:role`, queryRole);
     }
-  }, [roomId, queryParticipantId, queryRole]);
+  }, [roomId, queryParticipantId, queryRole, status]);
 
   useEffect(() => {
+    if (status === "unauthenticated") {
+      router.replace("/join");
+    }
+  }, [status, router]);
+
+  useEffect(() => {
+    if (status !== "authenticated") return;
     let interval: NodeJS.Timeout | null = null;
 
     async function loadRoom() {
@@ -146,7 +157,7 @@ export default function RoomPage() {
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [roomId, participantId]);
+  }, [roomId, participantId, status]);
 
   async function joinViaInvite() {
     setError(null);
@@ -295,6 +306,22 @@ export default function RoomPage() {
   }, [participantId, roomId]);
 
   const invitePrompt = useMemo(() => search.get("invite"), [search]);
+
+  if (status === "loading") {
+    return (
+      <div className="min-h-screen bg-zinc-50 p-6 text-zinc-900">
+        <p className="text-sm text-zinc-600">Checking sign-in status...</p>
+      </div>
+    );
+  }
+
+  if (status === "unauthenticated") {
+    return (
+      <div className="min-h-screen bg-zinc-50 p-6 text-zinc-900">
+        <p className="text-sm text-zinc-600">Redirecting to sign-in...</p>
+      </div>
+    );
+  }
 
   if (error) {
     return (
