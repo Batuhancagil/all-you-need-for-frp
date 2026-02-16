@@ -4,6 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
+import { LiveKitRoom, VideoConference } from "@livekit/components-react";
+import "@livekit/components-styles";
+import { buildVideoRoomName } from "@/lib/video-room";
 
 type ApiResponse<T> = {
   data: T | null;
@@ -28,6 +31,8 @@ type Roll = {
   total: number;
   createdAt: string;
 };
+
+const LIVEKIT_URL = process.env.NEXT_PUBLIC_LIVEKIT_URL ?? "";
 
 export default function RoomPage() {
   const params = useParams();
@@ -61,6 +66,7 @@ export default function RoomPage() {
   });
   const [callJoined, setCallJoined] = useState(false);
   const [callFrameReady, setCallFrameReady] = useState(false);
+  const [callToken, setCallToken] = useState<string | null>(null);
   const [callError, setCallError] = useState<string | null>(null);
   const [diceSides, setDiceSides] = useState(20);
   const [diceCount, setDiceCount] = useState(1);
@@ -81,11 +87,7 @@ export default function RoomPage() {
     () => participants.filter((person) => person.inCall),
     [participants]
   );
-  const callRoomName = useMemo(() => {
-    // Jitsi room names should be simple alphanumeric tokens.
-    const safeRoomId = roomId.replace(/[^a-zA-Z0-9]/g, "");
-    return `AllYouNeedForFRP${safeRoomId || "Room"}`;
-  }, [roomId]);
+  const callRoomName = useMemo(() => buildVideoRoomName(roomId), [roomId]);
 
   useEffect(() => {
     if (status !== "authenticated") return;
@@ -272,18 +274,35 @@ export default function RoomPage() {
   }
 
   async function handleJoinCall() {
+    if (!participantId) {
+      setCallError("Join the room first before starting the call.");
+      return;
+    }
     setCallError(null);
     setCallFrameReady(false);
+
+    if (!LIVEKIT_URL) {
+      setCallError("Video server URL is missing. Set NEXT_PUBLIC_LIVEKIT_URL in env.");
+      return;
+    }
+
     try {
-      if (navigator.mediaDevices?.getUserMedia) {
-        await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+      const res = await fetch(`/api/rooms/${roomId}/video-token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ participantId }),
+      });
+      const payload = (await res.json()) as ApiResponse<{ token: string }>;
+      if (payload.error || !payload.data) {
+        setCallError(payload.error?.message ?? "Could not start call");
+        return;
       }
+
+      setCallToken(payload.data.token);
       setCallJoined(true);
       await updateCallState({ inCall: true, micOn: true, camOn: true });
     } catch {
-      setCallError("Camera/mic permissions denied. You can still roll dice.");
-      await updateCallState({ inCall: true, micOn: false, camOn: false });
-      setCallJoined(true);
+      setCallError("Could not connect to video room. Check your connection and try again.");
     }
   }
 
@@ -291,6 +310,7 @@ export default function RoomPage() {
     setCallError(null);
     setCallJoined(false);
     setCallFrameReady(false);
+    setCallToken(null);
     await updateCallState({ inCall: false, micOn: false, camOn: false });
   }
 
@@ -439,13 +459,27 @@ export default function RoomPage() {
               ) : null}
               {callJoined ? (
                 <div className="mt-4 overflow-hidden rounded-xl border border-zinc-200">
-                  <iframe
-                    title="Room video call"
-                    src={`https://meet.jit.si/${callRoomName}#config.prejoinPageEnabled=false`}
-                    allow="camera; microphone; fullscreen; display-capture; autoplay"
-                    className="h-[420px] w-full bg-zinc-100"
-                    onLoad={() => setCallFrameReady(true)}
-                  />
+                  {callToken ? (
+                    <div className="h-[420px] w-full bg-zinc-100">
+                      <LiveKitRoom
+                        token={callToken}
+                        serverUrl={LIVEKIT_URL}
+                        connect
+                        video
+                        audio
+                        className="h-full w-full"
+                        onConnected={() => setCallFrameReady(true)}
+                        onDisconnected={() => setCallFrameReady(false)}
+                        onError={(liveKitError) => setCallError(liveKitError.message)}
+                      >
+                        <VideoConference />
+                      </LiveKitRoom>
+                    </div>
+                  ) : (
+                    <div className="flex h-[420px] items-center justify-center text-sm text-zinc-500">
+                      Connecting to room {callRoomName}...
+                    </div>
+                  )}
                 </div>
               ) : null}
               <div className="mt-4">

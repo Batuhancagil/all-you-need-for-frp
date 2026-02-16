@@ -20,6 +20,22 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Video Calls (LiveKit)
+
+The room page now uses embedded LiveKit instead of Jitsi. Add these environment variables before running:
+
+```bash
+NEXT_PUBLIC_LIVEKIT_URL=wss://your-livekit-domain
+LIVEKIT_API_KEY=your_livekit_api_key
+LIVEKIT_API_SECRET=your_livekit_api_secret
+```
+
+Notes:
+
+- The browser connects with `NEXT_PUBLIC_LIVEKIT_URL`.
+- The server endpoint `/api/rooms/[roomId]/video-token` signs room tokens.
+- Tokens are valid for 12 hours, suitable for long play sessions.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
