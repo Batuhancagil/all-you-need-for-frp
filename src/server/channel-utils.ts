@@ -11,8 +11,8 @@ export function getDefaultChannels(): DefaultChannelSeed[] {
     { name: "general", slug: "general", type: "TEXT" },
     { name: "session-notes", slug: "session-notes", type: "TEXT" },
     { name: "dice-rolls", slug: "dice-rolls", type: "DICE" },
-    { name: "table", slug: "table", type: "VOICE" },
-    { name: "afk", slug: "afk", type: "VOICE" },
+    { name: "Session", slug: "session", type: "VOICE" },
+    { name: "Chill", slug: "chill", type: "VOICE" },
   ];
 }
 

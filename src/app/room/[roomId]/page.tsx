@@ -80,6 +80,19 @@ function formatLastSeen(iso: string | undefined): { label: string; online: boole
   return { label: `${Math.floor(ms / 86400000)}d ago`, online: false };
 }
 
+/** Parse expression to get sides per die for overlay tumbling (e.g. "2d6+3" → [6,6]). */
+function parseExpressionSides(expr: string): number[] {
+  const out: number[] = [];
+  const regex = /(\d*)d(\d+)/gi;
+  let m;
+  while ((m = regex.exec(expr)) !== null) {
+    const count = m[1] ? parseInt(m[1], 10) : 1;
+    const sides = parseInt(m[2], 10);
+    for (let i = 0; i < count; i++) out.push(sides);
+  }
+  return out.length ? out : [20];
+}
+
 /** Get sides for each die in order from expression, or [sides×count] for legacy. */
 function getTermSides(roll: Roll): number[] {
   if (roll.expression?.trim()) {
@@ -108,6 +121,39 @@ function diceColor(value: number, sides: number): string {
   if (t < 0.75) return "bg-lime-100 text-lime-800";
   return "bg-emerald-50 text-emerald-700";
 }
+
+/** Tumbling die face during roll – cycles numbers for tension. */
+function TumblingDie({
+  sides,
+  finalValue,
+  isRevealing,
+  colorClass,
+}: {
+  sides: number;
+  finalValue: number;
+  isRevealing: boolean;
+  colorClass: string;
+}) {
+  const [display, setDisplay] = useState(finalValue);
+  useEffect(() => {
+    if (isRevealing) {
+      setDisplay(finalValue);
+      return;
+    }
+    const id = setInterval(() => {
+      setDisplay((prev) => (prev % sides) + 1);
+    }, 60 + Math.random() * 40);
+    return () => clearInterval(id);
+  }, [sides, finalValue, isRevealing]);
+  return (
+    <span
+      className={`inline-flex h-12 w-12 items-center justify-center rounded-xl text-xl font-bold tabular-nums shadow-md transition-all ${colorClass} ${isRevealing ? "animate-dice-reveal-pop" : "animate-dice-shake"}`}
+    >
+      {display}
+    </span>
+  );
+}
+
 const PTT_KEY_OPTIONS = [
   { code: "Space", label: "Space" },
   { code: "KeyV", label: "V" },
@@ -309,6 +355,11 @@ export default function RoomPage() {
   const [diceError, setDiceError] = useState<string | null>(null);
   const [rollingDice, setRollingDice] = useState(false);
   const [lastRoll, setLastRoll] = useState<Roll | null>(null);
+  const [rollOverlay, setRollOverlay] = useState<
+    | { phase: "rolling"; expression: string }
+    | { phase: "reveal"; roll: Roll }
+    | null
+  >(null);
   const [namedRolls, setNamedRolls] = useState<Record<string, string>>(() => {
     if (typeof window === "undefined") return {};
     try {
@@ -640,11 +691,15 @@ export default function RoomPage() {
     });
   }
 
+  const ROLL_TENSION_MS = 1200;
+  const REVEAL_DISPLAY_MS = 1800;
+
   async function rollDice(expressionOverride?: string) {
     setDiceError(null);
     if (!participantId) return;
     const expr = (expressionOverride ?? diceExpression).trim() || "d20";
     setRollingDice(true);
+    setRollOverlay({ phase: "rolling", expression: expr });
     try {
       const res = await fetch(`/api/rooms/${roomId}/roll`, {
         method: "POST",
@@ -653,16 +708,28 @@ export default function RoomPage() {
       });
       const payload = (await res.json()) as ApiResponse<{ roll: Roll }>;
       if (payload.error) {
+        setRollOverlay(null);
         setDiceError(payload.error.message);
         return;
       }
       if (payload.data?.roll) {
         const newRoll = payload.data.roll;
-        setRolls((prev) => [newRoll, ...prev].slice(0, 50));
-        setLastRoll(newRoll);
+        // Build tension: hold result, show tumbling a bit longer
+        await new Promise((r) => setTimeout(r, ROLL_TENSION_MS));
+        setRollOverlay({ phase: "reveal", roll: newRoll });
+        setTimeout(() => {
+          setRolls((prev) => [newRoll, ...prev].slice(0, 50));
+          setLastRoll(newRoll);
+          setRollOverlay(null);
+          setRollingDice(false);
+        }, REVEAL_DISPLAY_MS);
+      } else {
+        setRollOverlay(null);
+        setRollingDice(false);
       }
-    } finally {
-      setTimeout(() => setRollingDice(false), 400);
+    } catch {
+      setRollOverlay(null);
+      setRollingDice(false);
     }
   }
 
@@ -1015,7 +1082,89 @@ export default function RoomPage() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-900">
+    <>
+      {rollOverlay ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 animate-roll-overlay-in backdrop-blur-sm"
+          aria-modal
+          role="dialog"
+          aria-label="Dice roll"
+        >
+          <div className="mx-4 flex max-w-md flex-col items-center rounded-2xl border-2 border-amber-200/50 bg-gradient-to-b from-amber-50 to-amber-100/80 px-8 py-10 shadow-2xl">
+            {rollOverlay.phase === "rolling" ? (
+              <>
+                <p className="mb-6 text-lg font-semibold uppercase tracking-widest text-amber-900/80">
+                  Rolling…
+                </p>
+                <div className="flex flex-wrap justify-center gap-3">
+                  {parseExpressionSides(rollOverlay.expression).map((sides, i) => (
+                    <TumblingDie
+                      key={i}
+                      sides={sides}
+                      finalValue={1}
+                      isRevealing={false}
+                      colorClass="bg-amber-100 text-amber-900 border-2 border-amber-300/60"
+                    />
+                  ))}
+                </div>
+                <p className="mt-6 text-xs text-amber-800/70">The dice tumble through fate…</p>
+              </>
+            ) : (
+              (() => {
+                const { roll } = rollOverlay;
+                const termSides = getTermSides(roll);
+                const primarySides = termSides[0] ?? 20;
+                const isNat20 = roll.results.some((r, i) => (termSides[i] ?? 20) === 20 && r === 20);
+                const isNat1 = roll.results.some((r, i) => (termSides[i] ?? 20) === 20 && r === 1);
+                return (
+                  <>
+                    <p className="mb-2 text-xs font-medium text-amber-800">{roll.participantName}</p>
+                    <div
+                      className={`mb-4 flex justify-center ${
+                        isNat20
+                          ? "animate-crit-glow rounded-2xl px-6 py-2"
+                          : isNat1
+                            ? ""
+                            : ""
+                      }`}
+                    >
+                      <span
+                        className={`font-bold tabular-nums ${
+                          isNat20
+                            ? "text-4xl text-amber-600"
+                            : isNat1
+                              ? "text-4xl text-rose-600 animate-fumble-shake"
+                              : "text-4xl text-zinc-800"
+                        }`}
+                      >
+                        {roll.total}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap justify-center gap-2">
+                      {termSides.map((sides, i) => (
+                        <TumblingDie
+                          key={i}
+                          sides={sides}
+                          finalValue={roll.results[i] ?? 0}
+                          isRevealing
+                          colorClass={diceColor(roll.results[i] ?? 0, sides)}
+                        />
+                      ))}
+                    </div>
+                    {isNat20 ? (
+                      <p className="mt-6 text-lg font-bold text-amber-600">★ Critical! ★</p>
+                    ) : isNat1 ? (
+                      <p className="mt-6 text-lg font-bold text-rose-600">… Fumble …</p>
+                    ) : null}
+                  </>
+                );
+              })()
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="min-h-screen bg-zinc-50 text-zinc-900">
       <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 py-10">
         <header className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -1881,5 +2030,6 @@ export default function RoomPage() {
         </section>
       </main>
     </div>
+    </>
   );
 }
