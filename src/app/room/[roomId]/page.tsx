@@ -782,7 +782,10 @@ export default function RoomPage() {
 
   async function refreshParticipants() {
     const res = await fetch(`/api/rooms/${roomId}/participants`);
-    const payload = (await res.json()) as ApiResponse<{ participants: Participant[]; sessionState: string }>;
+    const payload = (await res.json()) as ApiResponse<{
+      participants: Participant[];
+      sessionState: "waiting" | "active" | "ended";
+    }>;
     if (payload.data) {
       setParticipants(payload.data.participants);
       setRoom((prev) => (prev ? { ...prev, sessionState: payload.data!.sessionState } : prev));
