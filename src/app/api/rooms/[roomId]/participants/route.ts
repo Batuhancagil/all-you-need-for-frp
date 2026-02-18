@@ -31,6 +31,7 @@ export async function GET(
       inCall: participant.inCall,
       micOn: participant.micOn,
       camOn: participant.camOn,
+      callChannelSlug: participant.callChannelSlug,
     })),
     sessionState: mapSessionState(room.sessionState),
   });

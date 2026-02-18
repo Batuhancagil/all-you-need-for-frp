@@ -21,6 +21,7 @@ type Participant = {
   inCall: boolean;
   micOn: boolean;
   camOn: boolean;
+  callChannelSlug?: string | null;
 };
 
 type Roll = {
@@ -42,6 +43,7 @@ type Channel = {
 
 type ChatMessage = {
   id: string;
+  channelId: string;
   content: string;
   createdAt: string;
   participant: {
@@ -217,10 +219,18 @@ export default function RoomPage() {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [channelsError, setChannelsError] = useState<string | null>(null);
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
+  const [channelCreateOpen, setChannelCreateOpen] = useState(false);
+  const [channelCreateType, setChannelCreateType] = useState<"text" | "voice">("text");
+  const [channelCreateName, setChannelCreateName] = useState("");
+  const [channelCreateError, setChannelCreateError] = useState<string | null>(null);
+  const [channelCreating, setChannelCreating] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatError, setChatError] = useState<string | null>(null);
-  const chatMessagesRef = useRef<ChatMessage[]>([]);
+  const [unreadByChannel, setUnreadByChannel] = useState<Record<string, number>>({});
+  const chatCursorRef = useRef<string>(new Date(0).toISOString());
+  const chatContainerRef = useRef<HTMLDivElement | null>(null);
+  const shouldStickToBottomRef = useRef(true);
   const [audioMode, setAudioMode] = useState<"always" | "ptt">("always");
   const [pttKeyCode, setPttKeyCode] = useState<string>("Space");
   const [noiseThreshold, setNoiseThreshold] = useState(5);
@@ -253,6 +263,7 @@ export default function RoomPage() {
     () => channels.find((channel) => channel.id === selectedChannelId) ?? channels[0] ?? null,
     [channels, selectedChannelId]
   );
+  const selectedTextChannelId = selectedChannel?.type === "text" ? selectedChannel.id : null;
   const activeVoiceChannel = useMemo(() => {
     if (selectedChannel?.type === "voice") return selectedChannel;
     return voiceChannels[0] ?? null;
@@ -263,6 +274,19 @@ export default function RoomPage() {
     }
     return buildVideoRoomName(roomId);
   }, [activeVoiceChannel, roomId]);
+  const joinedVoiceSlug = currentParticipant?.callChannelSlug ?? null;
+  const joinedInSelectedVoice =
+    !!callJoined && !!activeVoiceChannel && joinedVoiceSlug === activeVoiceChannel.slug;
+  const voiceMembersBySlug = useMemo(() => {
+    const grouped: Record<string, Participant[]> = {};
+    participants.forEach((person) => {
+      if (!person.inCall || !person.callChannelSlug) return;
+      grouped[person.callChannelSlug] = grouped[person.callChannelSlug]
+        ? [...grouped[person.callChannelSlug], person]
+        : [person];
+    });
+    return grouped;
+  }, [participants]);
 
   useEffect(() => {
     if (status !== "authenticated") return;
@@ -357,8 +381,8 @@ export default function RoomPage() {
   }, [roomId, participantId, status]);
 
   useEffect(() => {
-    if (selectedChannel?.type !== "text") return;
-    fetch(`/api/rooms/${roomId}/chat/messages?channelId=${selectedChannel.id}`)
+    if (!selectedTextChannelId) return;
+    fetch(`/api/rooms/${roomId}/chat/messages?channelId=${selectedTextChannelId}`)
       .then((res) => res.json())
       .then((payload: ApiResponse<{ messages: ChatMessage[] }>) => {
         if (payload.error || !payload.data) {
@@ -367,38 +391,90 @@ export default function RoomPage() {
         }
         setChatError(null);
         setChatMessages(payload.data.messages);
+        const latest = payload.data.messages[payload.data.messages.length - 1]?.createdAt;
+        if (latest && latest > chatCursorRef.current) {
+          chatCursorRef.current = latest;
+        }
+        shouldStickToBottomRef.current = true;
       });
-  }, [roomId, selectedChannel]);
+  }, [roomId, selectedTextChannelId]);
 
   useEffect(() => {
-    chatMessagesRef.current = chatMessages;
-  }, [chatMessages]);
+    if (!participantId) return;
 
-  useEffect(() => {
-    if (selectedChannel?.type !== "text") return;
+    let stopped = false;
+    async function pollUpdates() {
+      try {
+        const res = await fetch(
+          `/api/rooms/${roomId}/chat/updates?since=${encodeURIComponent(chatCursorRef.current)}`
+        );
+        const payload = (await res.json()) as ApiResponse<{ cursor: string; messages: ChatMessage[] }>;
+        if (stopped || payload.error || !payload.data) return;
+        chatCursorRef.current = payload.data.cursor;
+        if (payload.data.messages.length === 0) return;
 
-    const since = chatMessagesRef.current[chatMessagesRef.current.length - 1]?.createdAt ?? new Date().toISOString();
-    const stream = new EventSource(
-      `/api/rooms/${roomId}/chat/stream?channelId=${selectedChannel.id}&since=${encodeURIComponent(since)}`
-    );
-    stream.addEventListener("messages", (event) => {
-      const payload = JSON.parse((event as MessageEvent<string>).data) as ChatMessage[];
-      setChatMessages((prev) => {
-        const seen = new Set(prev.map((msg) => msg.id));
-        const next = [...prev];
-        payload.forEach((msg) => {
-          if (!seen.has(msg.id)) next.push(msg);
+        if (selectedTextChannelId) {
+          const selectedNew = payload.data.messages.filter(
+            (message) => message.channelId === selectedTextChannelId
+          );
+          if (selectedNew.length > 0) {
+            setChatMessages((prev) => {
+              const seen = new Set(prev.map((message) => message.id));
+              const merged = [...prev];
+              selectedNew.forEach((message) => {
+                if (!seen.has(message.id)) merged.push(message);
+              });
+              return merged.slice(-200);
+            });
+          }
+        }
+
+        const unreadDeltas: Record<string, number> = {};
+        payload.data.messages.forEach((message) => {
+          if (message.channelId === selectedTextChannelId) return;
+          unreadDeltas[message.channelId] = (unreadDeltas[message.channelId] ?? 0) + 1;
         });
-        return next.slice(-200);
-      });
-    });
-    stream.onerror = () => {
-      stream.close();
-    };
+        if (Object.keys(unreadDeltas).length > 0) {
+          setUnreadByChannel((prev) => {
+            const next = { ...prev };
+            Object.entries(unreadDeltas).forEach(([channelId, count]) => {
+              next[channelId] = (next[channelId] ?? 0) + count;
+            });
+            return next;
+          });
+        }
+      } catch {
+        return;
+      }
+    }
+
+    void pollUpdates();
+    const interval = setInterval(() => {
+      void pollUpdates();
+    }, 2000);
     return () => {
-      stream.close();
+      stopped = true;
+      clearInterval(interval);
     };
-  }, [roomId, selectedChannel]);
+  }, [participantId, roomId, selectedTextChannelId]);
+
+  useEffect(() => {
+    if (!selectedTextChannelId) return;
+    setUnreadByChannel((prev) => {
+      if (!prev[selectedTextChannelId]) return prev;
+      return { ...prev, [selectedTextChannelId]: 0 };
+    });
+  }, [selectedTextChannelId]);
+
+  useEffect(() => {
+    if (!selectedTextChannelId) return;
+    if (!shouldStickToBottomRef.current) return;
+    const element = chatContainerRef.current;
+    if (!element) return;
+    requestAnimationFrame(() => {
+      element.scrollTop = element.scrollHeight;
+    });
+  }, [chatMessages, selectedTextChannelId]);
 
   async function joinViaInvite() {
     setError(null);
@@ -502,7 +578,12 @@ export default function RoomPage() {
     }
   }
 
-  async function updateCallState(updates: { inCall?: boolean; micOn?: boolean; camOn?: boolean }) {
+  async function updateCallState(updates: {
+    inCall?: boolean;
+    micOn?: boolean;
+    camOn?: boolean;
+    channelSlug?: string | null;
+  }) {
     if (!participantId) return;
     await fetch(`/api/rooms/${roomId}/call`, {
       method: "POST",
@@ -538,7 +619,12 @@ export default function RoomPage() {
 
       setCallToken(payload.data.token);
       setCallJoined(true);
-      await updateCallState({ inCall: true, micOn: true, camOn: true });
+      await updateCallState({
+        inCall: true,
+        micOn: true,
+        camOn: true,
+        channelSlug: activeVoiceChannel?.slug ?? null,
+      });
     } catch {
       setCallError("Could not connect to video room. Check your connection and try again.");
     }
@@ -549,7 +635,7 @@ export default function RoomPage() {
     setCallJoined(false);
     setCallFrameReady(false);
     setCallToken(null);
-    await updateCallState({ inCall: false, micOn: false, camOn: false });
+    await updateCallState({ inCall: false, micOn: false, camOn: false, channelSlug: null });
   }
 
   async function sendChatMessage() {
@@ -578,6 +664,46 @@ export default function RoomPage() {
     });
   }
 
+  async function createChannel() {
+    setChannelCreateError(null);
+    if (!participantId) {
+      setChannelCreateError("Join room first to create channels.");
+      return;
+    }
+    if (!channelCreateName.trim()) {
+      setChannelCreateError("Please enter a channel name.");
+      return;
+    }
+    setChannelCreating(true);
+    try {
+      const res = await fetch(`/api/rooms/${roomId}/channels`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          participantId,
+          type: channelCreateType,
+          name: channelCreateName.trim(),
+        }),
+      });
+      const payload = (await res.json()) as ApiResponse<{ channel: Channel }>;
+      if (payload.error || !payload.data) {
+        setChannelCreateError(payload.error?.message ?? "Could not create channel");
+        return;
+      }
+      setChannels((prev) =>
+        [...prev, payload.data!.channel].sort((a, b) => {
+          if (a.type !== b.type) return a.type === "text" ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        })
+      );
+      setSelectedChannelId(payload.data.channel.id);
+      setChannelCreateName("");
+      setChannelCreateOpen(false);
+    } finally {
+      setChannelCreating(false);
+    }
+  }
+
   async function handleCopyInviteCode() {
     setInviteCopyError(null);
     try {
@@ -595,7 +721,13 @@ export default function RoomPage() {
       void fetch(`/api/rooms/${roomId}/call`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ participantId, inCall: false, micOn: false, camOn: false }),
+        body: JSON.stringify({
+          participantId,
+          inCall: false,
+          micOn: false,
+          camOn: false,
+          channelSlug: null,
+        }),
       }).catch(() => null);
     };
   }, [participantId, roomId]);
@@ -685,19 +817,78 @@ export default function RoomPage() {
 
         <section className="grid gap-6 lg:grid-cols-[260px_1fr]">
           <aside className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-[0.1em] text-zinc-500">Channels</p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-zinc-500">Channels</p>
+              <button
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-zinc-200 text-sm font-semibold text-zinc-700 hover:bg-zinc-100"
+                onClick={() => {
+                  setChannelCreateOpen((prev) => !prev);
+                  setChannelCreateError(null);
+                }}
+                aria-label="Add channel"
+              >
+                +
+              </button>
+            </div>
+            {channelCreateOpen ? (
+              <div className="mt-2 rounded-lg border border-zinc-200 bg-zinc-50 p-2">
+                <select
+                  className="w-full rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-xs"
+                  value={channelCreateType}
+                  onChange={(event) => setChannelCreateType(event.target.value as "text" | "voice")}
+                >
+                  <option value="text">Text channel</option>
+                  <option value="voice">Voice channel</option>
+                </select>
+                <input
+                  className="mt-2 w-full rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-xs"
+                  placeholder="Channel name"
+                  value={channelCreateName}
+                  onChange={(event) => setChannelCreateName(event.target.value)}
+                />
+                <div className="mt-2 flex gap-2">
+                  <button
+                    className="rounded-full bg-zinc-900 px-3 py-1 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:bg-zinc-300"
+                    onClick={createChannel}
+                    disabled={channelCreating}
+                  >
+                    {channelCreating ? "Adding..." : "Add"}
+                  </button>
+                  <button
+                    className="rounded-full border border-zinc-200 px-3 py-1 text-[11px] font-semibold text-zinc-700"
+                    onClick={() => setChannelCreateOpen(false)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+                {channelCreateError ? (
+                  <p className="mt-2 text-[11px] text-amber-600">{channelCreateError}</p>
+                ) : null}
+              </div>
+            ) : null}
             <div className="mt-4">
               <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-400">Text Channels</p>
               <div className="mt-2 space-y-1">
                 {textChannels.map((channel) => (
                   <button
                     key={channel.id}
-                    className={`flex w-full items-center rounded-lg px-2 py-1.5 text-left text-sm ${
+                    className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm ${
                       selectedChannel?.id === channel.id ? "bg-zinc-900 text-white" : "hover:bg-zinc-100"
                     }`}
                     onClick={() => setSelectedChannelId(channel.id)}
                   >
-                    #{channel.name}
+                    <span>#{channel.name}</span>
+                    {(unreadByChannel[channel.id] ?? 0) > 0 ? (
+                      <span
+                        className={`inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                          selectedChannel?.id === channel.id
+                            ? "bg-white text-zinc-900"
+                            : "bg-zinc-900 text-white"
+                        }`}
+                      >
+                        {unreadByChannel[channel.id]}
+                      </span>
+                    ) : null}
                   </button>
                 ))}
               </div>
@@ -706,15 +897,25 @@ export default function RoomPage() {
               <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-400">Voice Channels</p>
               <div className="mt-2 space-y-1">
                 {voiceChannels.map((channel) => (
-                  <button
-                    key={channel.id}
-                    className={`flex w-full items-center rounded-lg px-2 py-1.5 text-left text-sm ${
-                      selectedChannel?.id === channel.id ? "bg-zinc-900 text-white" : "hover:bg-zinc-100"
-                    }`}
-                    onClick={() => setSelectedChannelId(channel.id)}
-                  >
-                    🔊 {channel.name}
-                  </button>
+                  <div key={channel.id}>
+                    <button
+                      className={`flex w-full items-center rounded-lg px-2 py-1.5 text-left text-sm ${
+                        selectedChannel?.id === channel.id ? "bg-zinc-900 text-white" : "hover:bg-zinc-100"
+                      }`}
+                      onClick={() => setSelectedChannelId(channel.id)}
+                    >
+                      🔊 {channel.name}
+                    </button>
+                    {(voiceMembersBySlug[channel.slug] ?? []).length > 0 ? (
+                      <div className="ml-4 mt-1 space-y-1">
+                        {(voiceMembersBySlug[channel.slug] ?? []).map((member) => (
+                          <p key={member.id} className="text-[11px] text-zinc-500">
+                            {member.name}
+                          </p>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                 ))}
               </div>
             </div>
@@ -724,7 +925,15 @@ export default function RoomPage() {
             {selectedChannel?.type === "text" ? (
               <div>
                 <h3 className="text-base font-semibold">#{selectedChannel.name}</h3>
-                <div className="mt-3 h-64 overflow-y-auto rounded-lg border border-zinc-200 bg-zinc-50 p-3">
+                <div
+                  ref={chatContainerRef}
+                  className="mt-3 h-64 overflow-y-auto rounded-lg border border-zinc-200 bg-zinc-50 p-3"
+                  onScroll={(event) => {
+                    const target = event.currentTarget;
+                    const distanceToBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
+                    shouldStickToBottomRef.current = distanceToBottom < 24;
+                  }}
+                >
                   {chatMessages.length === 0 ? (
                     <p className="text-xs text-zinc-500">No messages yet.</p>
                   ) : (
@@ -767,7 +976,7 @@ export default function RoomPage() {
               <div>
                 <h3 className="text-base font-semibold">🔊 {activeVoiceChannel?.name ?? "voice"}</h3>
                 <p className="mt-2 text-sm text-zinc-500">
-                  Selected voice channel. Use Join call below to enter this channel.
+                  Configure audio mode, then join this selected voice channel.
                 </p>
                 <div className="mt-3 grid gap-3 md:grid-cols-3">
                   <label className="text-xs font-semibold text-zinc-600">
@@ -806,6 +1015,30 @@ export default function RoomPage() {
                       onChange={(event) => setNoiseThreshold(Number(event.target.value))}
                     />
                   </label>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {joinedInSelectedVoice ? (
+                    <button
+                      className="rounded-full bg-rose-600 px-4 py-2 text-xs font-semibold text-white"
+                      onClick={handleQuitCall}
+                    >
+                      Leave this channel
+                    </button>
+                  ) : (
+                    <button
+                      className="rounded-full bg-zinc-900 px-4 py-2 text-xs font-semibold text-white"
+                      onClick={handleJoinCall}
+                    >
+                      {callJoined ? "Switch to this channel" : "Join this channel"}
+                    </button>
+                  )}
+                  <span className="text-xs text-zinc-500">
+                    {callJoined
+                      ? joinedInSelectedVoice
+                        ? "You are connected to this voice channel."
+                        : `Currently connected in ${joinedVoiceSlug ?? "another channel"}.`
+                      : "Not connected to voice yet."}
+                  </span>
                 </div>
               </div>
             )}

@@ -30,6 +30,7 @@ export async function GET(
   return ok({
     messages: messages.map((message: (typeof messages)[number]) => ({
       id: message.id,
+      channelId: message.channelId,
       content: message.content,
       createdAt: message.createdAt.toISOString(),
       participant: {
@@ -90,6 +91,7 @@ export async function POST(
   return ok({
     message: {
       id: message.id,
+      channelId: message.channelId,
       content: message.content,
       createdAt: message.createdAt.toISOString(),
       participant: {

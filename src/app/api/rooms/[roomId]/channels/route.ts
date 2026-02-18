@@ -68,9 +68,6 @@ export async function POST(
   if (!requester) {
     return fail("participant_not_found", "Participant not found", 404);
   }
-  if (requester.role !== "ADMIN") {
-    return fail("forbidden", "Only admin can create channels", 403);
-  }
 
   const channelType: ChannelType = type === "voice" ? "VOICE" : "TEXT";
   const slug = sanitizeChannelSlug(name);

@@ -113,6 +113,7 @@ model Participant {
   inCall    Boolean         @default(false)
   micOn     Boolean         @default(false)
   camOn     Boolean         @default(false)
+  callChannelSlug String?
 
   room  Room  @relation(fields: [roomId], references: [id], onDelete: Cascade)
   rolls Roll[]
