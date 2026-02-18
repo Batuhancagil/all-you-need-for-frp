@@ -14,14 +14,22 @@ export async function POST(
     return fail("missing_fields", "participantId and gmParticipantId are required");
   }
 
-  const requester = await prisma.participant.findFirst({
-    where: { id: participantId, roomId },
-  });
+  const [requester, roomCheck] = await Promise.all([
+    prisma.participant.findFirst({
+      where: { id: participantId, roomId },
+    }),
+    prisma.room.findUnique({
+      where: { id: roomId },
+      select: { createdByParticipantId: true },
+    }),
+  ]);
   if (!requester) {
     return fail("participant_not_found", "Participant not found", 404);
   }
-  if (requester.role !== "ADMIN") {
-    return fail("forbidden", "Only admin can assign GM", 403);
+  const isAdmin = requester.role === "ADMIN";
+  const isRoomCreator = roomCheck?.createdByParticipantId === requester.id;
+  if (!isAdmin && !isRoomCreator) {
+    return fail("forbidden", "Only admin or room creator can assign GM", 403);
   }
 
   const [room, gmParticipant] = await prisma.$transaction([

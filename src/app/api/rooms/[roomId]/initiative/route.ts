@@ -82,7 +82,7 @@ export async function POST(
     }
     const parsed = parseDiceExpression(expression.trim());
     if (!parsed) return fail("invalid_roll", "Invalid expression (e.g. 1d20, 2d6+3)");
-    const { total } = executeParsedRoll(parsed);
+    const { total, results } = executeParsedRoll(parsed);
 
     const maxOrder = await prisma.initiativeEntry.findFirst({
       where: { roomId },
@@ -122,6 +122,7 @@ export async function POST(
         creatureName: entry.creatureName,
         expression: entry.expression,
         result: entry.result,
+        results,
         sortOrder,
       },
     });

@@ -51,7 +51,16 @@ type InitiativeEntry = {
   creatureName: string | null;
   expression: string;
   result: number;
+  results?: number[];
   sortOrder: number;
+};
+
+/** Unified reveal data for dice overlay (main roll or initiative). */
+type RollRevealData = {
+  expression: string;
+  total: number;
+  results: number[];
+  participantName: string;
 };
 
 type ChatMessage = {
@@ -357,7 +366,7 @@ export default function RoomPage() {
   const [lastRoll, setLastRoll] = useState<Roll | null>(null);
   const [rollOverlay, setRollOverlay] = useState<
     | { phase: "rolling"; expression: string }
-    | { phase: "reveal"; roll: Roll }
+    | { phase: "reveal"; data: RollRevealData }
     | null
   >(null);
   const [namedRolls, setNamedRolls] = useState<Record<string, string>>(() => {
@@ -716,7 +725,15 @@ export default function RoomPage() {
         const newRoll = payload.data.roll;
         // Build tension: hold result, show tumbling a bit longer
         await new Promise((r) => setTimeout(r, ROLL_TENSION_MS));
-        setRollOverlay({ phase: "reveal", roll: newRoll });
+        setRollOverlay({
+          phase: "reveal",
+          data: {
+            expression: newRoll.expression ?? "",
+            total: newRoll.total,
+            results: newRoll.results,
+            participantName: newRoll.participantName,
+          },
+        });
         setTimeout(() => {
           setRolls((prev) => [newRoll, ...prev].slice(0, 50));
           setLastRoll(newRoll);
@@ -778,9 +795,10 @@ export default function RoomPage() {
   async function addInitiativeEntry(isCreature: boolean, expr?: string, creatureName?: string) {
     if (!participantId) return;
     setInitiativeError(null);
+    const expression = (expr ?? initiativeExpression).trim() || "d20";
     setInitiativeAdding(true);
+    setRollOverlay({ phase: "rolling", expression });
     try {
-      const expression = (expr ?? initiativeExpression).trim() || "d20";
       const body: Record<string, unknown> = {
         participantId,
         action: "add",
@@ -796,16 +814,42 @@ export default function RoomPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const payload = (await res.json()) as ApiResponse<{ entry: InitiativeEntry }>;
+      const payload = (await res.json()) as ApiResponse<{
+        entry: InitiativeEntry & { results?: number[] };
+      }>;
       if (payload.error) {
+        setRollOverlay(null);
         setInitiativeError(payload.error.message);
-      } else if (payload.data?.entry) {
-        setInitiativeCreatureName("");
-        const initRes = await fetch(`/api/rooms/${roomId}/initiative`);
-        const initPayload = (await initRes.json()) as ApiResponse<{ entries: InitiativeEntry[] }>;
-        if (initPayload.data) setInitiativeEntries(initPayload.data.entries);
+        setInitiativeAdding(false);
+        return;
       }
-    } finally {
+      if (payload.data?.entry) {
+        setInitiativeCreatureName("");
+        const entry = payload.data.entry;
+        const results = entry.results ?? [entry.result];
+        await new Promise((r) => setTimeout(r, ROLL_TENSION_MS));
+        setRollOverlay({
+          phase: "reveal",
+          data: {
+            expression: entry.expression,
+            total: entry.result,
+            results,
+            participantName: entry.creatureName ?? entry.participantName ?? "—",
+          },
+        });
+        setTimeout(async () => {
+          const initRes = await fetch(`/api/rooms/${roomId}/initiative`);
+          const initPayload = (await initRes.json()) as ApiResponse<{ entries: InitiativeEntry[] }>;
+          if (initPayload.data) setInitiativeEntries(initPayload.data.entries);
+          setRollOverlay(null);
+          setInitiativeAdding(false);
+        }, REVEAL_DISPLAY_MS);
+      } else {
+        setRollOverlay(null);
+        setInitiativeAdding(false);
+      }
+    } catch {
+      setRollOverlay(null);
       setInitiativeAdding(false);
     }
   }
@@ -859,6 +903,14 @@ export default function RoomPage() {
     }
   }
 
+  async function refreshRoom() {
+    const res = await fetch(`/api/rooms/${roomId}`);
+    const payload = (await res.json()) as ApiResponse<typeof room>;
+    if (payload.data) {
+      setRoom(payload.data);
+    }
+  }
+
   async function saveRecap() {
     setRecapError(null);
     if (!participantId) return;
@@ -884,6 +936,9 @@ export default function RoomPage() {
     const payload = (await res.json()) as ApiResponse<{ gmId: string }>;
     if (payload.error) {
       setGmAssignError(payload.error.message);
+    } else {
+      void refreshRoom();
+      void refreshParticipants();
     }
   }
 
@@ -1111,14 +1166,13 @@ export default function RoomPage() {
               </>
             ) : (
               (() => {
-                const { roll } = rollOverlay;
-                const termSides = getTermSides(roll);
-                const primarySides = termSides[0] ?? 20;
-                const isNat20 = roll.results.some((r, i) => (termSides[i] ?? 20) === 20 && r === 20);
-                const isNat1 = roll.results.some((r, i) => (termSides[i] ?? 20) === 20 && r === 1);
+                const { data } = rollOverlay;
+                const termSides = parseExpressionSides(data.expression);
+                const isNat20 = data.results.some((r, i) => (termSides[i] ?? 20) === 20 && r === 20);
+                const isNat1 = data.results.some((r, i) => (termSides[i] ?? 20) === 20 && r === 1);
                 return (
                   <>
-                    <p className="mb-2 text-xs font-medium text-amber-800">{roll.participantName}</p>
+                    <p className="mb-2 text-xs font-medium text-amber-800">{data.participantName}</p>
                     <div
                       className={`mb-4 flex justify-center ${
                         isNat20
@@ -1137,7 +1191,7 @@ export default function RoomPage() {
                               : "text-4xl text-zinc-800"
                         }`}
                       >
-                        {roll.total}
+                        {data.total}
                       </span>
                     </div>
                     <div className="flex flex-wrap justify-center gap-2">
@@ -1145,9 +1199,9 @@ export default function RoomPage() {
                         <TumblingDie
                           key={i}
                           sides={sides}
-                          finalValue={roll.results[i] ?? 0}
+                          finalValue={data.results[i] ?? 0}
                           isRevealing
-                          colorClass={diceColor(roll.results[i] ?? 0, sides)}
+                          colorClass={diceColor(data.results[i] ?? 0, sides)}
                         />
                       ))}
                     </div>
@@ -1970,7 +2024,7 @@ export default function RoomPage() {
                 <p className="mt-3 text-xs text-zinc-500">GM not assigned yet.</p>
               )}
             </div>
-            {currentParticipant?.role === "admin" ? (
+            {(currentParticipant?.role === "admin" || isRoomAdmin) ? (
               <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
                 <h2 className="text-lg font-semibold">Assign GM</h2>
                 <p className="text-sm text-zinc-500">
