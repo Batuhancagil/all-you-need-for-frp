@@ -74,6 +74,7 @@ enum ParticipantRole {
 enum ChannelType {
   TEXT
   VOICE
+  DICE
 }
 
 model AdminSettings {
@@ -93,14 +94,17 @@ model Room {
   createdAt        DateTime      @default(now())
   sessionStartedAt DateTime?
   sessionEndedAt   DateTime?
+  createdByParticipantId String?
+  backgroundMusicUrl String?
 
   gmParticipantId String?       @unique
   gmParticipant   Participant?  @relation("RoomGm", fields: [gmParticipantId], references: [id], onDelete: SetNull)
 
-  participants    Participant[]
-  rolls           Roll[]
-  channels        Channel[]
-  chatMessages    ChatMessage[]
+  participants       Participant[]
+  rolls              Roll[]
+  channels           Channel[]
+  chatMessages       ChatMessage[]
+  initiativeEntries  InitiativeEntry[]
 }
 
 model Participant {
@@ -115,23 +119,26 @@ model Participant {
   camOn     Boolean         @default(false)
   callChannelSlug String?
 
-  room  Room  @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  rolls Roll[]
-  chatMessages ChatMessage[]
+  room             Room              @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  rolls            Roll[]
+  chatMessages     ChatMessage[]
+  initiativeEntries InitiativeEntry[]
 
   gmRoom Room? @relation("RoomGm")
 }
 
 model Roll {
-  id             String      @id @default(cuid())
-  roomId         String
-  participantId  String
-  participantName String
-  sides          Int
-  count          Int
-  results        Int[]
-  total          Int
-  createdAt      DateTime    @default(now())
+  id               String   @id @default(cuid())
+  roomId           String
+  participantId    String
+  participantName  String
+  sides            Int      @default(20)
+  count            Int      @default(1)
+  expression       String?
+  modifier         Int      @default(0)
+  results          Int[]
+  total            Int
+  createdAt        DateTime @default(now())
 
   room        Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
   participant Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
@@ -165,4 +172,20 @@ model ChatMessage {
   participant Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
 
   @@index([roomId, channelId, createdAt])
+}
+
+model InitiativeEntry {
+  id             String   @id @default(cuid())
+  roomId         String
+  participantId  String?
+  creatureName   String?
+  expression     String
+  result         Int
+  sortOrder      Int
+  createdAt      DateTime @default(now())
+
+  room        Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  participant Participant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+
+  @@index([roomId])
 }

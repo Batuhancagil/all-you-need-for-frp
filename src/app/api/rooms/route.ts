@@ -62,6 +62,10 @@ export async function POST(request: Request) {
       role: "ADMIN",
     },
   });
+  await prisma.room.update({
+    where: { id: room.id },
+    data: { createdByParticipantId: adminParticipant.id },
+  });
   await prisma.channel.createMany({
     data: getDefaultChannels().map((channel: ReturnType<typeof getDefaultChannels>[number]) => ({
       roomId: room.id,

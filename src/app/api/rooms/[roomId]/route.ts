@@ -18,6 +18,8 @@ export async function GET(
       sessionState: true,
       gmParticipantId: true,
       recap: true,
+      backgroundMusicUrl: true,
+      createdByParticipantId: true,
       _count: { select: { participants: true } },
     },
   });
@@ -32,7 +34,9 @@ export async function GET(
     inviteCode: room.inviteCode,
     sessionState: mapSessionState(room.sessionState),
     gmId: room.gmParticipantId,
+    createdByParticipantId: room.createdByParticipantId ?? null,
     participantCount: room._count.participants,
     recap: room.recap ?? null,
+    backgroundMusicUrl: room.backgroundMusicUrl ?? null,
   });
 }

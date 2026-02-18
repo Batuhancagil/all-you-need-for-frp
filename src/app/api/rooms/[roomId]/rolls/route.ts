@@ -28,6 +28,8 @@ export async function GET(
       participantName: roll.participantName,
       sides: roll.sides,
       count: roll.count,
+      expression: roll.expression,
+      modifier: roll.modifier,
       results: roll.results,
       total: roll.total,
       createdAt: roll.createdAt.toISOString(),

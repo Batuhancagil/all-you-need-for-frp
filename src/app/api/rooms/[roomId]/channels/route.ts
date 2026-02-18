@@ -31,18 +31,32 @@ export async function GET(
         type: channel.type,
       })),
     });
-    channels = await prisma.channel.findMany({
-      where: { roomId },
-      orderBy: [{ type: "asc" }, { createdAt: "asc" }],
-    });
+  } else {
+    const hasDice = channels.some((c: { type: string }) => c.type === "DICE");
+    if (!hasDice) {
+      try {
+        await prisma.channel.create({
+          data: { roomId, name: "dice-rolls", slug: "dice-rolls", type: ChannelType.DICE },
+        });
+      } catch {
+        // race condition or already exists
+      }
+    }
   }
+  channels = await prisma.channel.findMany({
+    where: { roomId },
+    orderBy: [{ type: "asc" }, { createdAt: "asc" }],
+  });
+
+  const typeMap = (t: ChannelType) =>
+    t === "TEXT" ? "text" : t === "VOICE" ? "voice" : "dice";
 
   return ok({
     channels: channels.map((channel: (typeof channels)[number]) => ({
       id: channel.id,
       name: channel.name,
       slug: channel.slug,
-      type: channel.type === "TEXT" ? "text" : "voice",
+      type: typeMap(channel.type),
     })),
   });
 }
@@ -55,7 +69,7 @@ export async function POST(
   const body = await request.json().catch(() => null);
   const participantId = body?.participantId as string | undefined;
   const name = body?.name as string | undefined;
-  const type = body?.type as "text" | "voice" | undefined;
+  const type = body?.type as "text" | "voice" | "dice" | undefined;
 
   if (!participantId || !name || !type) {
     return fail("missing_fields", "participantId, name and type are required");
@@ -69,7 +83,8 @@ export async function POST(
     return fail("participant_not_found", "Participant not found", 404);
   }
 
-  const channelType: ChannelType = type === "voice" ? "VOICE" : "TEXT";
+  const channelType: ChannelType =
+    type === "voice" ? "VOICE" : type === "dice" ? "DICE" : "TEXT";
   const slug = sanitizeChannelSlug(name);
 
   try {
@@ -86,7 +101,7 @@ export async function POST(
         id: channel.id,
         name: channel.name,
         slug: channel.slug,
-        type: channel.type === "TEXT" ? "text" : "voice",
+        type: channel.type === "TEXT" ? "text" : channel.type === "VOICE" ? "voice" : "dice",
       },
     });
   } catch {

@@ -29,6 +29,8 @@ type Roll = {
   participantName: string;
   sides: number;
   count: number;
+  expression?: string | null;
+  modifier?: number | null;
   results: number[];
   total: number;
   createdAt: string;
@@ -38,7 +40,17 @@ type Channel = {
   id: string;
   name: string;
   slug: string;
-  type: "text" | "voice";
+  type: "text" | "voice" | "dice";
+};
+
+type InitiativeEntry = {
+  id: string;
+  participantId: string | null;
+  participantName: string | null;
+  creatureName: string | null;
+  expression: string;
+  result: number;
+  sortOrder: number;
 };
 
 type ChatMessage = {
@@ -175,14 +187,29 @@ function VoiceRuntimeControls({
   }, [isNoiseOpen, localParticipant, mode, pttActive]);
 
   return (
-    <div className="pointer-events-none absolute bottom-16 left-2 z-40 rounded-lg bg-black/60 px-2 py-1 text-[10px] text-white">
-      <span>Input {Math.round(inputLevel * 100)}</span>
-      <span className="mx-2">|</span>
+    <div className="absolute bottom-16 left-2 z-40 flex items-center gap-2">
+      <div className="pointer-events-none rounded-lg bg-black/60 px-2 py-1 text-[10px] text-white">
+        <span>Input {Math.round(inputLevel * 100)}</span>
+        <span className="mx-2">|</span>
+        {mode === "ptt" ? (
+          <span>{pttActive ? "PTT live" : `Hold ${getPttKeyLabel(pttKeyCode)}`}</span>
+        ) : (
+          <span>{isNoiseOpen ? "Mic open" : "Noise gate closed"}</span>
+        )}
+      </div>
       {mode === "ptt" ? (
-        <span>{pttActive ? "PTT live" : `Hold ${getPttKeyLabel(pttKeyCode)}`}</span>
-      ) : (
-        <span>{isNoiseOpen ? "Mic open" : "Noise gate closed"}</span>
-      )}
+        <button
+          type="button"
+          className="pointer-events-auto rounded-lg bg-zinc-800 px-3 py-2 text-xs font-semibold text-white hover:bg-zinc-700 active:bg-emerald-600"
+          onMouseDown={() => setPttActive(true)}
+          onMouseUp={() => setPttActive(false)}
+          onMouseLeave={() => setPttActive(false)}
+          onTouchStart={(e) => { e.preventDefault(); setPttActive(true); }}
+          onTouchEnd={(e) => { e.preventDefault(); setPttActive(false); }}
+        >
+          Hold to talk
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -199,7 +226,9 @@ export default function RoomPage() {
     inviteCode: string;
     sessionState: "waiting" | "active" | "ended";
     gmId: string | null;
+    createdByParticipantId: string | null;
     recap: string | null;
+    backgroundMusicUrl: string | null;
   } | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [rolls, setRolls] = useState<Roll[]>([]);
@@ -220,7 +249,7 @@ export default function RoomPage() {
   const [channelsError, setChannelsError] = useState<string | null>(null);
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
   const [channelCreateOpen, setChannelCreateOpen] = useState(false);
-  const [channelCreateType, setChannelCreateType] = useState<"text" | "voice">("text");
+  const [channelCreateType, setChannelCreateType] = useState<"text" | "voice" | "dice">("text");
   const [channelCreateName, setChannelCreateName] = useState("");
   const [channelCreateError, setChannelCreateError] = useState<string | null>(null);
   const [channelCreating, setChannelCreating] = useState(false);
@@ -234,9 +263,16 @@ export default function RoomPage() {
   const [audioMode, setAudioMode] = useState<"always" | "ptt">("always");
   const [pttKeyCode, setPttKeyCode] = useState<string>("Space");
   const [noiseThreshold, setNoiseThreshold] = useState(5);
-  const [diceSides, setDiceSides] = useState(20);
-  const [diceCount, setDiceCount] = useState(1);
+  const [diceExpression, setDiceExpression] = useState("d20");
   const [diceError, setDiceError] = useState<string | null>(null);
+  const [rollingDice, setRollingDice] = useState(false);
+  const [initiativeEntries, setInitiativeEntries] = useState<InitiativeEntry[]>([]);
+  const [initiativeCreatureName, setInitiativeCreatureName] = useState("");
+  const [initiativeExpression, setInitiativeExpression] = useState("d20");
+  const [initiativeAdding, setInitiativeAdding] = useState(false);
+  const [initiativeError, setInitiativeError] = useState<string | null>(null);
+  const [musicUrl, setMusicUrl] = useState("");
+  const [musicError, setMusicError] = useState<string | null>(null);
   const [recapText, setRecapText] = useState("");
   const [recapError, setRecapError] = useState<string | null>(null);
   const [gmAssignId, setGmAssignId] = useState<string>("");
@@ -252,6 +288,9 @@ export default function RoomPage() {
   );
   const role: "gm" | "player" | "admin" = currentParticipant?.role ?? "player";
   const canManageSession = role === "gm" || role === "admin";
+  const isRoomAdmin =
+    currentParticipant?.id != null && room?.createdByParticipantId === currentParticipant.id;
+  const canKick = role === "admin" || isRoomAdmin;
   const gmCandidates = useMemo(() => participants, [participants]);
   const callParticipants = useMemo(
     () => participants.filter((person) => person.inCall),
@@ -259,11 +298,13 @@ export default function RoomPage() {
   );
   const textChannels = useMemo(() => channels.filter((channel) => channel.type === "text"), [channels]);
   const voiceChannels = useMemo(() => channels.filter((channel) => channel.type === "voice"), [channels]);
+  const diceChannels = useMemo(() => channels.filter((channel) => channel.type === "dice"), [channels]);
   const selectedChannel = useMemo(
     () => channels.find((channel) => channel.id === selectedChannelId) ?? channels[0] ?? null,
     [channels, selectedChannelId]
   );
   const selectedTextChannelId = selectedChannel?.type === "text" ? selectedChannel.id : null;
+  const selectedDiceChannelId = selectedChannel?.type === "dice" ? selectedChannel.id : null;
   const activeVoiceChannel = useMemo(() => {
     if (selectedChannel?.type === "voice") return selectedChannel;
     return voiceChannels[0] ?? null;
@@ -319,6 +360,9 @@ export default function RoomPage() {
       }
       setRoom(payload.data);
       setRecapText(payload.data.recap ?? "");
+      if (payload.data.backgroundMusicUrl) {
+        setMusicUrl(payload.data.backgroundMusicUrl);
+      }
     }
 
     async function loadParticipants() {
@@ -358,14 +402,24 @@ export default function RoomPage() {
       });
     }
 
+    async function loadInitiative() {
+      const res = await fetch(`/api/rooms/${roomId}/initiative`);
+      const payload = (await res.json()) as ApiResponse<{ entries: InitiativeEntry[] }>;
+      if (payload.data) setInitiativeEntries(payload.data.entries);
+    }
+    void loadInitiative();
+
     loadRoom();
     loadParticipants();
     loadRolls();
     loadChannels();
 
-    interval = setInterval(() => {
+    interval = setInterval(async () => {
       loadParticipants();
       loadRolls();
+      const initRes = await fetch(`/api/rooms/${roomId}/initiative`);
+      const initPayload = (await initRes.json()) as ApiResponse<{ entries: InitiativeEntry[] }>;
+      if (initPayload.data) setInitiativeEntries(initPayload.data.entries);
       if (participantId) {
         fetch(`/api/rooms/${roomId}/ping`, {
           method: "POST",
@@ -523,31 +577,130 @@ export default function RoomPage() {
     });
   }
 
-  async function rollDice() {
+  async function rollDice(expressionOverride?: string) {
     setDiceError(null);
     if (!participantId) return;
-    if (!Number.isFinite(diceSides) || diceSides <= 1 || diceCount <= 0) {
-      setDiceError("Invalid dice roll. Choose sides and count.");
-      return;
+    const expr = (expressionOverride ?? diceExpression).trim() || "d20";
+    setRollingDice(true);
+    try {
+      const res = await fetch(`/api/rooms/${roomId}/roll`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ participantId, expression: expr }),
+      });
+      const payload = (await res.json()) as ApiResponse<{ roll: Roll }>;
+      if (payload.error) {
+        setDiceError(payload.error.message);
+        return;
+      }
+      if (payload.data?.roll) {
+        setRolls((prev) => [payload.data!.roll, ...prev].slice(0, 50));
+      }
+    } finally {
+      setTimeout(() => setRollingDice(false), 400);
     }
-    await fetch(`/api/rooms/${roomId}/roll`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        participantId,
-        sides: diceSides,
-        count: diceCount,
-      }),
-    });
   }
 
   async function clearRollLog() {
     if (!participantId) return;
-    await fetch(`/api/rooms/${roomId}/rolls/clear`, {
+    const res = await fetch(`/api/rooms/${roomId}/rolls/clear`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ participantId }),
     });
+    if (res.ok) setRolls([]);
+  }
+
+  async function startInitiative() {
+    if (!participantId) return;
+    setInitiativeError(null);
+    const res = await fetch(`/api/rooms/${roomId}/initiative`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ participantId, action: "start" }),
+    });
+    const payload = (await res.json()) as ApiResponse<{ started?: boolean }>;
+    if (payload.error) {
+      setInitiativeError(payload.error.message);
+    } else {
+      setInitiativeEntries([]);
+    }
+  }
+
+  async function addInitiativeEntry(isCreature: boolean, expr?: string, creatureName?: string) {
+    if (!participantId) return;
+    setInitiativeError(null);
+    setInitiativeAdding(true);
+    try {
+      const expression = (expr ?? initiativeExpression).trim() || "d20";
+      const body: Record<string, unknown> = {
+        participantId,
+        action: "add",
+        expression,
+      };
+      if (isCreature && creatureName?.trim()) {
+        body.creatureName = creatureName.trim();
+      } else if (!isCreature) {
+        body.targetParticipantId = participantId;
+      }
+      const res = await fetch(`/api/rooms/${roomId}/initiative`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const payload = (await res.json()) as ApiResponse<{ entry: InitiativeEntry }>;
+      if (payload.error) {
+        setInitiativeError(payload.error.message);
+      } else if (payload.data?.entry) {
+        setInitiativeCreatureName("");
+        const initRes = await fetch(`/api/rooms/${roomId}/initiative`);
+        const initPayload = (await initRes.json()) as ApiResponse<{ entries: InitiativeEntry[] }>;
+        if (initPayload.data) setInitiativeEntries(initPayload.data.entries);
+      }
+    } finally {
+      setInitiativeAdding(false);
+    }
+  }
+
+  async function setBackgroundMusic(urlOverride?: string) {
+    if (!participantId) return;
+    setMusicError(null);
+    const url = urlOverride ?? musicUrl;
+    const res = await fetch(`/api/rooms/${roomId}/music`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ participantId, url }),
+    });
+    const payload = (await res.json()) as ApiResponse<{ url: string | null }>;
+    if (payload.error) {
+      setMusicError(payload.error.message);
+    } else if (payload.data) {
+      setRoom((prev) => (prev ? { ...prev, backgroundMusicUrl: payload.data!.url } : prev));
+    }
+  }
+
+  async function leaveRoom() {
+    if (!participantId) return;
+    await fetch(`/api/rooms/${roomId}/leave`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ participantId }),
+    });
+    router.replace("/join");
+  }
+
+  async function kickParticipant(targetId: string) {
+    if (!participantId) return;
+    const res = await fetch(`/api/rooms/${roomId}/kick`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ participantId, targetParticipantId: targetId }),
+    });
+    if (res.ok) {
+      const pRes = await fetch(`/api/rooms/${roomId}/participants`);
+      const pPayload = (await pRes.json()) as ApiResponse<{ participants: Participant[] }>;
+      if (pPayload.data) setParticipants(pPayload.data.participants);
+    }
   }
 
   async function saveRecap() {
@@ -692,7 +845,10 @@ export default function RoomPage() {
       }
       setChannels((prev) =>
         [...prev, payload.data!.channel].sort((a, b) => {
-          if (a.type !== b.type) return a.type === "text" ? -1 : 1;
+          if (a.type !== b.type) {
+            const order = { text: 0, dice: 1, voice: 2 };
+            return (order[a.type] ?? 3) - (order[b.type] ?? 3);
+          }
           return a.name.localeCompare(b.name);
         })
       );
@@ -789,6 +945,12 @@ export default function RoomPage() {
               {inviteCopied ? "Copied" : "Copy invite"}
             </button>
             {inviteCopyError ? <span className="text-xs text-amber-600">{inviteCopyError}</span> : null}
+            <button
+              className="rounded-full border border-rose-200 px-3 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+              onClick={leaveRoom}
+            >
+              Leave room
+            </button>
             <Link className="text-sm text-zinc-500 underline" href="/join">
               Back to join
             </Link>
@@ -835,10 +997,11 @@ export default function RoomPage() {
                 <select
                   className="w-full rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-xs"
                   value={channelCreateType}
-                  onChange={(event) => setChannelCreateType(event.target.value as "text" | "voice")}
+                  onChange={(event) => setChannelCreateType(event.target.value as "text" | "voice" | "dice")}
                 >
                   <option value="text">Text channel</option>
                   <option value="voice">Voice channel</option>
+                  <option value="dice">Dice channel</option>
                 </select>
                 <input
                   className="mt-2 w-full rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-xs"
@@ -893,6 +1056,24 @@ export default function RoomPage() {
                 ))}
               </div>
             </div>
+            {diceChannels.length > 0 ? (
+              <div className="mt-5">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-400">Dice</p>
+                <div className="mt-2 space-y-1">
+                  {diceChannels.map((channel) => (
+                    <button
+                      key={channel.id}
+                      className={`flex w-full items-center rounded-lg px-2 py-1.5 text-left text-sm ${
+                        selectedChannel?.id === channel.id ? "bg-zinc-900 text-white" : "hover:bg-zinc-100"
+                      }`}
+                      onClick={() => setSelectedChannelId(channel.id)}
+                    >
+                      🎲 {channel.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <div className="mt-5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-400">Voice Channels</p>
               <div className="mt-2 space-y-1">
@@ -922,7 +1103,33 @@ export default function RoomPage() {
             {channelsError ? <p className="mt-3 text-xs text-amber-600">{channelsError}</p> : null}
           </aside>
           <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-            {selectedChannel?.type === "text" ? (
+            {selectedChannel?.type === "dice" ? (
+              <div>
+                <h3 className="text-base font-semibold">🎲 {selectedChannel.name}</h3>
+                <p className="mt-1 text-xs text-zinc-500">Full roll history for this room</p>
+                <div
+                  ref={chatContainerRef}
+                  className="mt-3 max-h-96 overflow-y-auto rounded-lg border border-zinc-200 bg-zinc-50 p-3"
+                >
+                  {rolls.length === 0 ? (
+                    <p className="text-xs text-zinc-500">No rolls yet.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {rolls.map((roll) => (
+                        <div key={roll.id} className="rounded-lg border border-zinc-200 bg-white px-3 py-2">
+                          <p className="text-xs font-semibold">{roll.participantName}</p>
+                          <p className="text-xs text-zinc-600">
+                            {roll.expression
+                              ? `${roll.expression}: [${roll.results.join(", ")}]${roll.modifier ? ` + ${roll.modifier}` : ""} = ${roll.total}`
+                              : `d${roll.sides} × ${roll.count} → ${roll.results.join(", ")} (total ${roll.total})`}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : selectedChannel?.type === "text" ? (
               <div>
                 <h3 className="text-base font-semibold">#{selectedChannel.name}</h3>
                 <div
@@ -1177,33 +1384,93 @@ export default function RoomPage() {
             </div>
 
             <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-              <h2 className="text-lg font-semibold">Dice</h2>
-              <div className="mt-4 flex flex-wrap items-center gap-3">
-                <select
-                  className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
-                  value={diceSides}
-                  onChange={(event) => setDiceSides(Number(event.target.value))}
-                >
-                  {[4, 6, 8, 10, 12, 20].map((side) => (
-                    <option key={side} value={side}>
-                      d{side}
-                    </option>
-                  ))}
-                </select>
+              <h2 className="text-lg font-semibold">Initiative</h2>
+              <p className="text-xs text-zinc-500">GM starts; GM rolls for creatures; players roll for themselves.</p>
+              {canManageSession ? (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <button
+                    className="rounded-full bg-amber-600 px-4 py-2 text-xs font-semibold text-white"
+                    onClick={startInitiative}
+                  >
+                    Start initiative
+                  </button>
+                </div>
+              ) : null}
+              <div className="mt-4 flex flex-wrap items-center gap-2">
                 <input
-                  type="number"
-                  min={1}
-                  max={10}
-                  className="w-20 rounded-lg border border-zinc-200 px-3 py-2 text-sm"
-                  value={diceCount}
-                  onChange={(event) => setDiceCount(Number(event.target.value))}
+                  className="w-24 rounded-lg border border-zinc-200 px-2 py-1.5 text-sm"
+                  value={initiativeExpression}
+                  onChange={(e) => setInitiativeExpression(e.target.value)}
+                  placeholder="1d20"
+                />
+                {canManageSession ? (
+                  <>
+                    <input
+                      className="w-28 rounded-lg border border-zinc-200 px-2 py-1.5 text-sm"
+                      placeholder="Creature name"
+                      value={initiativeCreatureName}
+                      onChange={(e) => setInitiativeCreatureName(e.target.value)}
+                    />
+                    <button
+                      className="rounded-full bg-zinc-700 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                      onClick={() => addInitiativeEntry(true)}
+                      disabled={initiativeAdding}
+                    >
+                      Add creature
+                    </button>
+                  </>
+                ) : null}
+                <button
+                  className="rounded-full bg-zinc-900 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                  onClick={() => addInitiativeEntry(false)}
+                  disabled={initiativeAdding}
+                >
+                  Add me
+                </button>
+              </div>
+              {initiativeError ? <p className="mt-2 text-xs text-amber-600">{initiativeError}</p> : null}
+              <div className="mt-4 space-y-1">
+                {initiativeEntries.length === 0 ? (
+                  <p className="text-xs text-zinc-500">No initiative yet.</p>
+                ) : (
+                  initiativeEntries.map((e, i) => (
+                    <div
+                      key={e.id}
+                      className="flex items-center justify-between rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm"
+                    >
+                      <span className="font-semibold">{i + 1}. {e.creatureName ?? e.participantName ?? "—"}</span>
+                      <span className="text-xs text-zinc-600">{e.expression} → {e.result}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+              <h2 className="text-lg font-semibold">Dice</h2>
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <input
+                  className="min-w-[140px] rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                  value={diceExpression}
+                  onChange={(e) => setDiceExpression(e.target.value)}
+                  placeholder="2d4+3, d100, 1d20"
                 />
                 <button
-                  className="rounded-full bg-zinc-900 px-4 py-2 text-xs font-semibold text-white"
-                  onClick={rollDice}
+                  className={`rounded-full px-4 py-2 text-xs font-semibold text-white transition ${rollingDice ? "animate-pulse bg-amber-600" : "bg-zinc-900"}`}
+                  onClick={() => rollDice()}
+                  disabled={rollingDice}
                 >
-                  Roll
+                  {rollingDice ? "Rolling…" : "Roll"}
                 </button>
+                {["d20", "d100", "2d4+3"].map((expr) => (
+                  <button
+                    key={expr}
+                    className="rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-medium hover:bg-zinc-100"
+                    onClick={() => { setDiceExpression(expr); rollDice(expr); }}
+                  >
+                    {expr}
+                  </button>
+                ))}
                 {canManageSession ? (
                   <button
                     className="rounded-full border border-zinc-200 px-4 py-2 text-xs font-semibold"
@@ -1213,22 +1480,75 @@ export default function RoomPage() {
                   </button>
                 ) : null}
               </div>
-              <div className="mt-4 space-y-2 text-sm">
-                {diceError ? <p className="text-xs text-amber-600">{diceError}</p> : null}
+              {diceError ? <p className="mt-2 text-xs text-amber-600">{diceError}</p> : null}
+              <p className="mt-2 text-[11px] text-zinc-500">Recent rolls (full history in 🎲 dice channel)</p>
+              <div className="mt-3 space-y-2 max-h-40 overflow-y-auto">
                 {rolls.length === 0 ? (
-                  <p className="text-zinc-500">No rolls yet.</p>
+                  <p className="text-xs text-zinc-500">No rolls yet.</p>
                 ) : (
-                  rolls.map((roll) => (
+                  rolls.slice(0, 8).map((roll) => (
                     <div key={roll.id} className="rounded-lg border border-zinc-200 px-3 py-2">
-                      <p className="font-semibold">{roll.participantName}</p>
-                      <p className="text-xs text-zinc-500">
-                        d{roll.sides} × {roll.count} → {roll.results.join(", ")} (total {roll.total})
+                      <p className="text-xs font-semibold">{roll.participantName}</p>
+                      <p className="text-[11px] text-zinc-600">
+                        {roll.expression
+                          ? `${roll.expression}: [${roll.results.join(", ")}]${roll.modifier ? ` + ${roll.modifier}` : ""} = ${roll.total}`
+                          : `d${roll.sides} × ${roll.count} → ${roll.results.join(", ")} (total ${roll.total})`}
                       </p>
                     </div>
                   ))
                 )}
               </div>
             </div>
+
+            {canManageSession ? (
+              <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-semibold">Background music</h2>
+                <p className="text-xs text-zinc-500">YouTube URL (admin/GM only)</p>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <input
+                    className="min-w-[200px] flex-1 rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                    value={musicUrl}
+                    onChange={(e) => setMusicUrl(e.target.value)}
+                    placeholder="https://youtube.com/watch?v=..."
+                  />
+                  <button
+                    className="rounded-full bg-zinc-900 px-4 py-2 text-xs font-semibold text-white"
+                    onClick={() => void setBackgroundMusic()}
+                  >
+                    Set
+                  </button>
+                  <button
+                    className="rounded-full border border-zinc-200 px-4 py-2 text-xs font-semibold"
+                    onClick={() => { setMusicUrl(""); void setBackgroundMusic(""); }}
+                  >
+                    Clear
+                  </button>
+                </div>
+                {musicError ? <p className="mt-2 text-xs text-amber-600">{musicError}</p> : null}
+                {room?.backgroundMusicUrl ? (
+                  <div className="mt-3 aspect-video max-w-md overflow-hidden rounded-lg">
+                    <iframe
+                      className="h-full w-full"
+                      src={room.backgroundMusicUrl}
+                      title="Background music"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    />
+                  </div>
+                ) : null}
+              </div>
+            ) : room?.backgroundMusicUrl ? (
+              <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-semibold">Background music</h2>
+                <div className="mt-3 aspect-video max-w-md overflow-hidden rounded-lg">
+                  <iframe
+                    className="h-full w-full"
+                    src={room.backgroundMusicUrl}
+                    title="Background music"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  />
+                </div>
+              </div>
+            ) : null}
 
             <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold">Recap</h2>
@@ -1261,11 +1581,21 @@ export default function RoomPage() {
                   <p className="text-zinc-500">No participants yet.</p>
                 ) : (
                   participants.map((person) => (
-                    <div key={person.id} className="flex items-center justify-between">
-                      <span>{person.name}</span>
-                      <span className="text-xs text-zinc-500">
-                        {person.role === "gm" ? "GM" : person.role === "admin" ? "Admin" : "Player"}
-                      </span>
+                    <div key={person.id} className="flex items-center justify-between gap-2">
+                      <div>
+                        <span>{person.name}</span>
+                        <span className="ml-2 text-xs text-zinc-500">
+                          {person.role === "gm" ? "GM" : person.role === "admin" ? "Admin" : "Player"}
+                        </span>
+                      </div>
+                      {canKick && person.id !== participantId ? (
+                        <button
+                          className="rounded px-2 py-1 text-[10px] font-semibold text-rose-600 hover:bg-rose-100"
+                          onClick={() => kickParticipant(person.id)}
+                        >
+                          Kick
+                        </button>
+                      ) : null}
                     </div>
                   ))
                 )}
