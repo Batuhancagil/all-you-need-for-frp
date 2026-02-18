@@ -97,8 +97,11 @@ model Room {
   createdByParticipantId String?
   backgroundMusicUrl String?
 
-  gmParticipantId String?       @unique
-  gmParticipant   Participant?  @relation("RoomGm", fields: [gmParticipantId], references: [id], onDelete: SetNull)
+  gmParticipantId          String?  @unique
+  gmParticipant            Participant?   @relation("RoomGm", fields: [gmParticipantId], references: [id], onDelete: SetNull)
+  initiativeCurrentEntryId String?  @unique
+  initiativeCurrentEntry   InitiativeEntry? @relation("InitiativeCurrentTurn", fields: [initiativeCurrentEntryId], references: [id], onDelete: SetNull)
+  initiativeTurnCount      Int      @default(0)
 
   participants       Participant[]
   rolls              Roll[]
@@ -182,10 +185,12 @@ model InitiativeEntry {
   expression     String
   result         Int
   sortOrder      Int
+  isAlive        Boolean  @default(true)
   createdAt      DateTime @default(now())
 
-  room        Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  participant Participant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  room              Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  participant       Participant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  currentTurnRoom   Room?       @relation("InitiativeCurrentTurn")
 
   @@index([roomId])
 }

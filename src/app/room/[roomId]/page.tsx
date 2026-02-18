@@ -53,6 +53,12 @@ type InitiativeEntry = {
   result: number;
   results?: number[];
   sortOrder: number;
+  isAlive?: boolean;
+};
+
+type InitiativeState = {
+  currentTurnEntryId: string | null;
+  turnCount: number;
 };
 
 /** Unified reveal data for dice overlay (main roll or initiative). */
@@ -380,6 +386,11 @@ export default function RoomPage() {
   });
   const [namedRollInput, setNamedRollInput] = useState<string | null>(null);
   const [initiativeEntries, setInitiativeEntries] = useState<InitiativeEntry[]>([]);
+  const [initiativeState, setInitiativeState] = useState<InitiativeState>({
+    currentTurnEntryId: null,
+    turnCount: 0,
+  });
+  const [initiativeTurnCountInput, setInitiativeTurnCountInput] = useState("");
   const [initiativeCreatureName, setInitiativeCreatureName] = useState("");
   const [initiativeExpression, setInitiativeExpression] = useState("d20");
   const [initiativeAdding, setInitiativeAdding] = useState(false);
@@ -527,8 +538,18 @@ export default function RoomPage() {
 
     async function loadInitiative() {
       const res = await fetch(`/api/rooms/${roomId}/initiative`);
-      const payload = (await res.json()) as ApiResponse<{ entries: InitiativeEntry[] }>;
-      if (payload.data) setInitiativeEntries(payload.data.entries);
+      const payload = (await res.json()) as ApiResponse<{
+        entries: InitiativeEntry[];
+        currentTurnEntryId: string | null;
+        turnCount: number;
+      }>;
+      if (payload.data) {
+        setInitiativeEntries(payload.data.entries);
+        setInitiativeState({
+          currentTurnEntryId: payload.data.currentTurnEntryId ?? null,
+          turnCount: payload.data.turnCount ?? 0,
+        });
+      }
     }
     void loadInitiative();
 
@@ -541,8 +562,18 @@ export default function RoomPage() {
       loadParticipants();
       loadRolls();
       const initRes = await fetch(`/api/rooms/${roomId}/initiative`);
-      const initPayload = (await initRes.json()) as ApiResponse<{ entries: InitiativeEntry[] }>;
-      if (initPayload.data) setInitiativeEntries(initPayload.data.entries);
+      const initPayload = (await initRes.json()) as ApiResponse<{
+        entries: InitiativeEntry[];
+        currentTurnEntryId: string | null;
+        turnCount: number;
+      }>;
+      if (initPayload.data) {
+        setInitiativeEntries(initPayload.data.entries);
+        setInitiativeState({
+          currentTurnEntryId: initPayload.data.currentTurnEntryId ?? null,
+          turnCount: initPayload.data.turnCount ?? 0,
+        });
+      }
       if (participantId) {
         fetch(`/api/rooms/${roomId}/ping`, {
           method: "POST",
@@ -789,6 +820,98 @@ export default function RoomPage() {
       setInitiativeError(payload.error.message);
     } else {
       setInitiativeEntries([]);
+      setInitiativeState({ currentTurnEntryId: null, turnCount: 0 });
+    }
+  }
+
+  async function removeInitiativeEntry(entryId: string) {
+    if (!participantId) return;
+    setInitiativeError(null);
+    const res = await fetch(`/api/rooms/${roomId}/initiative`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ participantId, action: "remove", entryId }),
+    });
+    const payload = (await res.json()) as ApiResponse<{ removed?: boolean }>;
+    if (payload.error) {
+      setInitiativeError(payload.error.message);
+    } else {
+      void (async () => {
+        const initRes = await fetch(`/api/rooms/${roomId}/initiative`);
+        const initPayload = (await initRes.json()) as ApiResponse<{
+          entries: InitiativeEntry[];
+          currentTurnEntryId: string | null;
+          turnCount: number;
+        }>;
+        if (initPayload.data) {
+          setInitiativeEntries(initPayload.data.entries);
+          setInitiativeState({
+            currentTurnEntryId: initPayload.data.currentTurnEntryId ?? null,
+            turnCount: initPayload.data.turnCount ?? 0,
+          });
+        }
+      })();
+    }
+  }
+
+  async function toggleInitiativeAlive(entryId: string) {
+    if (!participantId) return;
+    setInitiativeError(null);
+    const res = await fetch(`/api/rooms/${roomId}/initiative`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ participantId, action: "toggleAlive", entryId }),
+    });
+    const payload = (await res.json()) as ApiResponse<{ isAlive?: boolean }>;
+    if (payload.error) {
+      setInitiativeError(payload.error.message);
+    } else {
+      setInitiativeEntries((prev) =>
+        prev.map((e) =>
+          e.id === entryId ? { ...e, isAlive: payload.data?.isAlive ?? !e.isAlive } : e
+        )
+      );
+    }
+  }
+
+  async function nextTurn() {
+    if (!participantId) return;
+    setInitiativeError(null);
+    const res = await fetch(`/api/rooms/${roomId}/initiative`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ participantId, action: "nextTurn" }),
+    });
+    const payload = (await res.json()) as ApiResponse<{
+      currentTurnEntryId?: string;
+      turnCount?: number;
+    }>;
+    if (payload.error) {
+      setInitiativeError(payload.error.message);
+    } else if (payload.data) {
+      setInitiativeState({
+        currentTurnEntryId: payload.data.currentTurnEntryId ?? null,
+        turnCount: payload.data.turnCount ?? 0,
+      });
+    }
+  }
+
+  async function setInitiativeTurnCount(count: number) {
+    if (!participantId) return;
+    setInitiativeError(null);
+    const res = await fetch(`/api/rooms/${roomId}/initiative`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ participantId, action: "setTurnCount", turnCount: count }),
+    });
+    const payload = (await res.json()) as ApiResponse<{ turnCount?: number }>;
+    if (payload.error) {
+      setInitiativeError(payload.error.message);
+    } else {
+      const newCount = payload.data?.turnCount;
+      if (typeof newCount === "number") {
+        setInitiativeState((prev) => ({ ...prev, turnCount: newCount }));
+      }
     }
   }
 
@@ -1734,8 +1857,8 @@ export default function RoomPage() {
                     />
                     <button
                       className="rounded-full bg-zinc-700 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
-                      onClick={() => addInitiativeEntry(true)}
-                      disabled={initiativeAdding}
+                      onClick={() => addInitiativeEntry(true, undefined, initiativeCreatureName)}
+                      disabled={initiativeAdding || !initiativeCreatureName.trim()}
                     >
                       Add creature
                     </button>
@@ -1749,20 +1872,117 @@ export default function RoomPage() {
                   Add me
                 </button>
               </div>
+              {initiativeEntries.length > 0 ? (
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-zinc-600">
+                      Turn {initiativeState.turnCount} • {initiativeState.currentTurnEntryId ? "Active" : "—"}
+                    </span>
+                    {canManageSession ? (
+                      <span className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          min={0}
+                          className="w-14 rounded border border-zinc-200 px-2 py-0.5 text-xs"
+                          placeholder="Turn #"
+                          value={initiativeTurnCountInput}
+                          onChange={(e) => setInitiativeTurnCountInput(e.target.value)}
+                          onKeyDown={(e) =>
+                            e.key === "Enter" && (() => {
+                              const n = parseInt(initiativeTurnCountInput, 10);
+                              if (!isNaN(n) && n >= 0) {
+                                setInitiativeTurnCount(n);
+                                setInitiativeTurnCountInput("");
+                              }
+                            })()
+                          }
+                        />
+                        <button
+                          className="rounded border border-zinc-200 px-2 py-0.5 text-[10px] hover:bg-zinc-100"
+                          onClick={() => {
+                            const n = parseInt(initiativeTurnCountInput, 10);
+                            if (!isNaN(n) && n >= 0) {
+                              setInitiativeTurnCount(n);
+                              setInitiativeTurnCountInput("");
+                            }
+                          }}
+                        >
+                          Set
+                        </button>
+                      </span>
+                    ) : null}
+                  </div>
+                  <button
+                    className="rounded-full bg-emerald-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={nextTurn}
+                    disabled={
+                      initiativeEntries.filter((e) => e.isAlive !== false).length === 0 ||
+                      (!canManageSession &&
+                        initiativeEntries.find((e) => e.id === initiativeState.currentTurnEntryId)?.participantId !==
+                          participantId)
+                    }
+                    title={
+                      canManageSession
+                        ? "Advance to next turn (GM can pass anytime)"
+                        : "Pass to next (only when it's your turn)"
+                    }
+                  >
+                    Next turn
+                  </button>
+                </div>
+              ) : null}
               {initiativeError ? <p className="mt-2 text-xs text-amber-600">{initiativeError}</p> : null}
               <div className="mt-4 space-y-1">
                 {initiativeEntries.length === 0 ? (
                   <p className="text-xs text-zinc-500">No initiative yet.</p>
                 ) : (
-                  initiativeEntries.map((e, i) => (
-                    <div
-                      key={e.id}
-                      className="flex items-center justify-between rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm"
-                    >
-                      <span className="font-semibold">{i + 1}. {e.creatureName ?? e.participantName ?? "—"}</span>
-                      <span className="text-xs text-zinc-600">{e.expression} → {e.result}</span>
-                    </div>
-                  ))
+                  initiativeEntries.map((e, i) => {
+                    const isCurrentTurn = e.id === initiativeState.currentTurnEntryId;
+                    const isCreature = !!e.creatureName;
+                    const displayName = e.creatureName ?? e.participantName ?? "—";
+                    const isDead = e.isAlive === false;
+                    return (
+                      <div
+                        key={e.id}
+                        className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm ${
+                          isCurrentTurn ? "border-amber-400 bg-amber-50" : "border-zinc-200 bg-zinc-50"
+                        } ${isDead ? "opacity-60" : ""}`}
+                      >
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          <span className="shrink-0 font-semibold">
+                            {i + 1}. {displayName}
+                          </span>
+                          <span className="text-xs text-zinc-600">
+                            {e.expression} → {e.result}
+                          </span>
+                          {isCurrentTurn ? (
+                            <span className="text-[10px] font-bold uppercase text-amber-600">• Current</span>
+                          ) : null}
+                          {isDead ? (
+                            <span className="text-[10px] font-medium text-rose-600">Dead</span>
+                          ) : null}
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button
+                            className="rounded px-2 py-1 text-[10px] font-medium text-zinc-600 hover:bg-zinc-200"
+                            onClick={() => toggleInitiativeAlive(e.id)}
+                            title={isDead ? "Mark alive" : "Mark dead"}
+                          >
+                            {isDead ? "Alive" : "Dead"}
+                          </button>
+                          {canManageSession && isCreature ? (
+                            <button
+                              className="rounded px-2 py-1 text-[10px] font-medium text-rose-600 hover:bg-rose-100"
+                              onClick={() => removeInitiativeEntry(e.id)}
+                              title="Remove creature"
+                            >
+                              Remove
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </div>
