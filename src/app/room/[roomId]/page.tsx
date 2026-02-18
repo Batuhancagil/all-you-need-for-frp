@@ -22,6 +22,7 @@ type Participant = {
   micOn: boolean;
   camOn: boolean;
   callChannelSlug?: string | null;
+  lastSeen?: string;
 };
 
 type Roll = {
@@ -66,6 +67,47 @@ type ChatMessage = {
 };
 
 const LIVEKIT_URL = process.env.NEXT_PUBLIC_LIVEKIT_URL ?? "";
+const CALL_STALE_MS = 3 * 60 * 1000; // 3 min - hide from call if no ping
+const ONLINE_MS = 90 * 1000; // 1.5 min - show as "online"
+
+function formatLastSeen(iso: string | undefined): { label: string; online: boolean } {
+  if (!iso) return { label: "—", online: false };
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < ONLINE_MS) return { label: "Online", online: true };
+  if (ms < 60 * 1000) return { label: `${Math.floor(ms / 1000)}s ago`, online: false };
+  if (ms < 60 * 60 * 1000) return { label: `${Math.floor(ms / 60000)}m ago`, online: false };
+  if (ms < 24 * 60 * 60 * 1000) return { label: `${Math.floor(ms / 3600000)}h ago`, online: false };
+  return { label: `${Math.floor(ms / 86400000)}d ago`, online: false };
+}
+
+/** Get sides for each die in order from expression, or [sides×count] for legacy. */
+function getTermSides(roll: Roll): number[] {
+  if (roll.expression?.trim()) {
+    const expr = roll.expression.trim().replace(/\s+/g, "");
+    const out: number[] = [];
+    const regex = /(\d*)d(\d+)/gi;
+    let m;
+    while ((m = regex.exec(expr)) !== null) {
+      const count = m[1] ? parseInt(m[1], 10) : 1;
+      const sides = parseInt(m[2], 10);
+      for (let i = 0; i < count; i++) out.push(sides);
+    }
+    return out.length > 0 ? out : Array(roll.count).fill(roll.sides);
+  }
+  return Array(roll.count).fill(roll.sides);
+}
+
+/** Red (1) to green (max) for value on a die with given sides. Returns bg + text classes. */
+function diceColor(value: number, sides: number): string {
+  if (sides <= 1) return "bg-zinc-200 text-zinc-800";
+  const t = (value - 1) / (sides - 1); // 0..1
+  if (t <= 0) return "bg-red-100 text-red-700 font-bold";
+  if (t >= 1) return "bg-emerald-100 text-emerald-700 font-bold";
+  if (t < 0.25) return "bg-amber-100 text-amber-800";
+  if (t < 0.5) return "bg-yellow-100 text-yellow-800";
+  if (t < 0.75) return "bg-lime-100 text-lime-800";
+  return "bg-emerald-50 text-emerald-700";
+}
 const PTT_KEY_OPTIONS = [
   { code: "Space", label: "Space" },
   { code: "KeyV", label: "V" },
@@ -266,6 +308,17 @@ export default function RoomPage() {
   const [diceExpression, setDiceExpression] = useState("d20");
   const [diceError, setDiceError] = useState<string | null>(null);
   const [rollingDice, setRollingDice] = useState(false);
+  const [lastRoll, setLastRoll] = useState<Roll | null>(null);
+  const [namedRolls, setNamedRolls] = useState<Record<string, string>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const raw = localStorage.getItem("aynfrp:namedRolls");
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
+  const [namedRollInput, setNamedRollInput] = useState<string | null>(null);
   const [initiativeEntries, setInitiativeEntries] = useState<InitiativeEntry[]>([]);
   const [initiativeCreatureName, setInitiativeCreatureName] = useState("");
   const [initiativeExpression, setInitiativeExpression] = useState("d20");
@@ -279,6 +332,10 @@ export default function RoomPage() {
   const [gmAssignError, setGmAssignError] = useState<string | null>(null);
   const [inviteCopied, setInviteCopied] = useState(false);
   const [inviteCopyError, setInviteCopyError] = useState<string | null>(null);
+  const [floatVideos, setFloatVideos] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("aynfrp:floatVideos") === "1";
+  });
 
   const queryParticipantId = search.get("pid");
   const participantId = queryParticipantId ?? storedParticipantId;
@@ -292,10 +349,14 @@ export default function RoomPage() {
     currentParticipant?.id != null && room?.createdByParticipantId === currentParticipant.id;
   const canKick = role === "admin" || isRoomAdmin;
   const gmCandidates = useMemo(() => participants, [participants]);
-  const callParticipants = useMemo(
-    () => participants.filter((person) => person.inCall),
-    [participants]
-  );
+  const callParticipants = useMemo(() => {
+    const now = Date.now();
+    return participants.filter((person) => {
+      if (!person.inCall) return false;
+      if (!person.lastSeen) return true;
+      return now - new Date(person.lastSeen).getTime() < CALL_STALE_MS;
+    });
+  }, [participants]);
   const textChannels = useMemo(() => channels.filter((channel) => channel.type === "text"), [channels]);
   const voiceChannels = useMemo(() => channels.filter((channel) => channel.type === "voice"), [channels]);
   const diceChannels = useMemo(() => channels.filter((channel) => channel.type === "dice"), [channels]);
@@ -319,9 +380,11 @@ export default function RoomPage() {
   const joinedInSelectedVoice =
     !!callJoined && !!activeVoiceChannel && joinedVoiceSlug === activeVoiceChannel.slug;
   const voiceMembersBySlug = useMemo(() => {
+    const now = Date.now();
     const grouped: Record<string, Participant[]> = {};
     participants.forEach((person) => {
       if (!person.inCall || !person.callChannelSlug) return;
+      if (person.lastSeen && now - new Date(person.lastSeen).getTime() >= CALL_STALE_MS) return;
       grouped[person.callChannelSlug] = grouped[person.callChannelSlug]
         ? [...grouped[person.callChannelSlug], person]
         : [person];
@@ -594,11 +657,29 @@ export default function RoomPage() {
         return;
       }
       if (payload.data?.roll) {
-        setRolls((prev) => [payload.data!.roll, ...prev].slice(0, 50));
+        const newRoll = payload.data.roll;
+        setRolls((prev) => [newRoll, ...prev].slice(0, 50));
+        setLastRoll(newRoll);
       }
     } finally {
       setTimeout(() => setRollingDice(false), 400);
     }
+  }
+
+  function saveNamedRoll(name: string) {
+    const trimmed = name.trim().toLowerCase().replace(/\s+/g, "-");
+    if (!trimmed) return;
+    const next = { ...namedRolls, [trimmed]: diceExpression.trim() || "d20" };
+    setNamedRolls(next);
+    localStorage.setItem("aynfrp:namedRolls", JSON.stringify(next));
+    setNamedRollInput(null);
+  }
+
+  function removeNamedRoll(name: string) {
+    const next = { ...namedRolls };
+    delete next[name];
+    setNamedRolls(next);
+    localStorage.setItem("aynfrp:namedRolls", JSON.stringify(next));
   }
 
   async function clearRollLog() {
@@ -696,10 +777,15 @@ export default function RoomPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ participantId, targetParticipantId: targetId }),
     });
-    if (res.ok) {
-      const pRes = await fetch(`/api/rooms/${roomId}/participants`);
-      const pPayload = (await pRes.json()) as ApiResponse<{ participants: Participant[] }>;
-      if (pPayload.data) setParticipants(pPayload.data.participants);
+    if (res.ok) void refreshParticipants();
+  }
+
+  async function refreshParticipants() {
+    const res = await fetch(`/api/rooms/${roomId}/participants`);
+    const payload = (await res.json()) as ApiResponse<{ participants: Participant[]; sessionState: string }>;
+    if (payload.data) {
+      setParticipants(payload.data.participants);
+      setRoom((prev) => (prev ? { ...prev, sessionState: payload.data!.sessionState } : prev));
     }
   }
 
@@ -1115,16 +1201,25 @@ export default function RoomPage() {
                     <p className="text-xs text-zinc-500">No rolls yet.</p>
                   ) : (
                     <div className="space-y-2">
-                      {rolls.map((roll) => (
-                        <div key={roll.id} className="rounded-lg border border-zinc-200 bg-white px-3 py-2">
-                          <p className="text-xs font-semibold">{roll.participantName}</p>
-                          <p className="text-xs text-zinc-600">
-                            {roll.expression
-                              ? `${roll.expression}: [${roll.results.join(", ")}]${roll.modifier ? ` + ${roll.modifier}` : ""} = ${roll.total}`
-                              : `d${roll.sides} × ${roll.count} → ${roll.results.join(", ")} (total ${roll.total})`}
-                          </p>
-                        </div>
-                      ))}
+                      {rolls.map((roll) => {
+                        const termSides = getTermSides(roll);
+                        return (
+                          <div key={roll.id} className="rounded-lg border border-zinc-200 bg-white px-3 py-2">
+                            <p className="text-xs font-semibold">{roll.participantName}</p>
+                            <p className="text-xl font-bold tabular-nums text-zinc-800">{roll.total}</p>
+                            <p className="mt-1 flex flex-wrap gap-1">
+                              {termSides.map((sides, i) => (
+                                <span
+                                  key={i}
+                                  className={`inline-flex h-7 w-7 items-center justify-center rounded text-sm font-bold ${diceColor(roll.results[i] ?? 0, sides)}`}
+                                >
+                                  {roll.results[i]}
+                                </span>
+                              ))}
+                            </p>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -1311,10 +1406,29 @@ export default function RoomPage() {
                 <p className="mt-3 text-xs text-amber-600">{callError}</p>
               ) : null}
               {callJoined ? (
-                <div className="mt-4 rounded-xl border border-zinc-200">
-                  {callToken ? (
-                    <div className="h-[70vh] min-h-[520px] w-full bg-zinc-100">
-                      <LiveKitRoom
+                <>
+                  <div className="mt-2 flex items-center gap-2">
+                    <label className="flex items-center gap-2 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={floatVideos}
+                        onChange={(e) => {
+                          const v = e.target.checked;
+                          setFloatVideos(v);
+                          localStorage.setItem("aynfrp:floatVideos", v ? "1" : "0");
+                        }}
+                      />
+                      <span>Float videos on right</span>
+                    </label>
+                  </div>
+                  <div
+                    className={`mt-4 rounded-xl border border-zinc-200 ${
+                      floatVideos ? "fixed right-4 top-24 z-50 w-[min(420px,calc(100vw-2rem))] shadow-xl" : ""
+                    }`}
+                  >
+                    {callToken ? (
+                      <div className={`w-full bg-zinc-100 ${floatVideos ? "aspect-video min-h-[280px]" : "h-[70vh] min-h-[520px]"}`}>
+                        <LiveKitRoom
                         token={callToken}
                         serverUrl={LIVEKIT_URL}
                         connect
@@ -1335,12 +1449,13 @@ export default function RoomPage() {
                         <VideoConference />
                       </LiveKitRoom>
                     </div>
-                  ) : (
-                    <div className="flex h-[70vh] min-h-[520px] items-center justify-center text-sm text-zinc-500">
-                      Connecting to room {callRoomName}...
-                    </div>
-                  )}
-                </div>
+                      ) : (
+                        <div className={`flex items-center justify-center text-sm text-zinc-500 ${floatVideos ? "min-h-[200px]" : "h-[70vh] min-h-[520px]"}`}>
+                          Connecting to room {callRoomName}...
+                        </div>
+                      )}
+                  </div>
+                </>
               ) : null}
               <div className="mt-4">
                 <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500">
@@ -1448,6 +1563,25 @@ export default function RoomPage() {
 
             <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold">Dice</h2>
+              {lastRoll ? (
+                <div className="mt-4 rounded-xl border-2 border-amber-200 bg-amber-50 p-4 text-center">
+                  <p className="text-xs font-medium text-amber-800">{lastRoll.participantName}</p>
+                  <p className="mt-1 text-4xl font-bold tabular-nums text-amber-900">
+                    {lastRoll.total}
+                  </p>
+                  <p className="mt-1 flex flex-wrap justify-center gap-1 text-sm">
+                    {getTermSides(lastRoll).map((sides, i) => (
+                      <span
+                        key={i}
+                        className={`inline-flex h-8 w-8 items-center justify-center rounded-md font-bold tabular-nums ${diceColor(lastRoll.results[i] ?? 0, sides)}`}
+                        title={`d${sides}`}
+                      >
+                        {lastRoll.results[i]}
+                      </span>
+                    ))}
+                  </p>
+                </div>
+              ) : null}
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <input
                   className="min-w-[140px] rounded-lg border border-zinc-200 px-3 py-2 text-sm"
@@ -1456,12 +1590,61 @@ export default function RoomPage() {
                   placeholder="2d4+3, d100, 1d20"
                 />
                 <button
-                  className={`rounded-full px-4 py-2 text-xs font-semibold text-white transition ${rollingDice ? "animate-pulse bg-amber-600" : "bg-zinc-900"}`}
+                  className={`rounded-full px-5 py-2.5 text-sm font-bold text-white transition ${rollingDice ? "animate-bounce bg-amber-500" : "bg-zinc-900 hover:bg-zinc-800"}`}
                   onClick={() => rollDice()}
                   disabled={rollingDice}
                 >
                   {rollingDice ? "Rolling…" : "Roll"}
                 </button>
+                {namedRollInput !== null ? (
+                  <span className="flex items-center gap-1">
+                    <input
+                      className="w-24 rounded border border-zinc-200 px-2 py-1 text-xs"
+                      placeholder="e.g. damage"
+                      value={namedRollInput}
+                      onChange={(e) => setNamedRollInput(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && saveNamedRoll(namedRollInput)}
+                      autoFocus
+                    />
+                    <button
+                      className="rounded bg-emerald-600 px-2 py-1 text-xs text-white"
+                      onClick={() => saveNamedRoll(namedRollInput)}
+                    >
+                      Save
+                    </button>
+                    <button
+                      className="rounded border px-2 py-1 text-xs"
+                      onClick={() => setNamedRollInput(null)}
+                    >
+                      Cancel
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    className="rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-medium hover:bg-zinc-100"
+                    onClick={() => setNamedRollInput("")}
+                    title="Save current roll with a name"
+                  >
+                    + Name
+                  </button>
+                )}
+                {Object.entries(namedRolls).map(([name, expr]) => (
+                  <button
+                    key={name}
+                    className="group flex items-center gap-1 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-medium hover:bg-zinc-200"
+                    onClick={() => { setDiceExpression(expr); rollDice(expr); }}
+                    title={`${name}: ${expr}`}
+                  >
+                    <span>{name}</span>
+                    <span
+                      className="ml-1 cursor-pointer rounded-full p-0.5 text-zinc-400 hover:bg-zinc-300 hover:text-zinc-600"
+                      onClick={(e) => { e.stopPropagation(); removeNamedRoll(name); }}
+                      title="Remove"
+                    >
+                      ×
+                    </span>
+                  </button>
+                ))}
                 {["d20", "d100", "2d4+3"].map((expr) => (
                   <button
                     key={expr}
@@ -1486,16 +1669,27 @@ export default function RoomPage() {
                 {rolls.length === 0 ? (
                   <p className="text-xs text-zinc-500">No rolls yet.</p>
                 ) : (
-                  rolls.slice(0, 8).map((roll) => (
-                    <div key={roll.id} className="rounded-lg border border-zinc-200 px-3 py-2">
-                      <p className="text-xs font-semibold">{roll.participantName}</p>
-                      <p className="text-[11px] text-zinc-600">
-                        {roll.expression
-                          ? `${roll.expression}: [${roll.results.join(", ")}]${roll.modifier ? ` + ${roll.modifier}` : ""} = ${roll.total}`
-                          : `d${roll.sides} × ${roll.count} → ${roll.results.join(", ")} (total ${roll.total})`}
-                      </p>
-                    </div>
-                  ))
+                  rolls.slice(0, 8).map((roll) => {
+                    const termSides = getTermSides(roll);
+                    return (
+                      <div key={roll.id} className="rounded-lg border border-zinc-200 px-3 py-2">
+                        <p className="text-xs font-semibold">{roll.participantName}</p>
+                        <p className="text-sm font-semibold tabular-nums text-zinc-800">
+                          {roll.total}
+                        </p>
+                        <p className="mt-1 flex flex-wrap gap-1">
+                          {termSides.map((sides, i) => (
+                            <span
+                              key={i}
+                              className={`inline-flex h-6 w-6 items-center justify-center rounded text-xs font-bold ${diceColor(roll.results[i] ?? 0, sides)}`}
+                            >
+                              {roll.results[i]}
+                            </span>
+                          ))}
+                        </p>
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -1575,29 +1769,45 @@ export default function RoomPage() {
 
           <aside className="space-y-6">
             <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-              <h2 className="text-lg font-semibold">Participants</h2>
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">Participants</h2>
+                <button
+                  className="rounded-full p-1.5 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700"
+                  onClick={() => void refreshParticipants()}
+                  title="Refresh"
+                  aria-label="Refresh participants"
+                >
+                  ↻
+                </button>
+              </div>
               <div className="mt-4 space-y-2 text-sm">
                 {participants.length === 0 ? (
                   <p className="text-zinc-500">No participants yet.</p>
                 ) : (
-                  participants.map((person) => (
-                    <div key={person.id} className="flex items-center justify-between gap-2">
-                      <div>
-                        <span>{person.name}</span>
-                        <span className="ml-2 text-xs text-zinc-500">
-                          {person.role === "gm" ? "GM" : person.role === "admin" ? "Admin" : "Player"}
-                        </span>
+                  participants.map((person) => {
+                    const { label: lastSeenLabel, online } = formatLastSeen(person.lastSeen);
+                    return (
+                      <div key={person.id} className="flex items-center justify-between gap-2">
+                        <div>
+                          <span>{person.name}</span>
+                          <span className="ml-2 text-xs text-zinc-500">
+                            {person.role === "gm" ? "GM" : person.role === "admin" ? "Admin" : "Player"}
+                          </span>
+                          <span className={`ml-2 text-[10px] ${online ? "text-emerald-600 font-medium" : "text-zinc-400"}`}>
+                            {online ? "● Online" : lastSeenLabel}
+                          </span>
+                        </div>
+                        {canKick && person.id !== participantId ? (
+                          <button
+                            className="rounded px-2 py-1 text-[10px] font-semibold text-rose-600 hover:bg-rose-100"
+                            onClick={() => kickParticipant(person.id)}
+                          >
+                            Kick
+                          </button>
+                        ) : null}
                       </div>
-                      {canKick && person.id !== participantId ? (
-                        <button
-                          className="rounded px-2 py-1 text-[10px] font-semibold text-rose-600 hover:bg-rose-100"
-                          onClick={() => kickParticipant(person.id)}
-                        >
-                          Kick
-                        </button>
-                      ) : null}
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
               {room.gmId ? (

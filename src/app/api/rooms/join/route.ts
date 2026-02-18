@@ -25,13 +25,33 @@ export async function POST(request: Request) {
     return fail("invite_not_found", "Invite link is invalid or expired", 404);
   }
 
-  const participant = await prisma.participant.create({
+  // Reuse participant if same name + lastSeen within 5 min (double-click, refresh).
+  // If lastSeen > 5 min, create new participant (treated as fresh join).
+  const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
+  const existing = await prisma.participant.findFirst({
+    where: {
+      roomId: room.id,
+      name: displayName.trim(),
+      lastSeen: { gte: fiveMinAgo },
+    },
+    orderBy: { lastSeen: "desc" },
+  });
+
+  const participant = existing ?? await prisma.participant.create({
     data: {
       roomId: room.id,
       name: displayName.trim(),
       role: "PLAYER",
     },
   });
+
+  if (existing) {
+    await prisma.participant.update({
+      where: { id: participant.id },
+      data: { lastSeen: new Date() },
+    });
+  }
+
   return ok({
     roomId: room.id,
     participant: {
