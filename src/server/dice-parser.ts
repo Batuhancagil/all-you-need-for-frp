@@ -6,6 +6,7 @@
 export type DiceTerm = {
   count: number;
   sides: number;
+  sign: number; // 1 or -1, for subtraction: 10-2d6, 1d20-1d4
   results?: number[];
 };
 
@@ -45,7 +46,7 @@ export function parseDiceExpression(input: string): ParsedRoll | null {
       }
       const sides = sidesStr ? parseInt(sidesStr, 10) : 20;
       if (!Number.isFinite(sides) || sides <= 0) return null;
-      terms.push({ count: 1, sides });
+      terms.push({ count: 1, sides, sign });
       continue;
     }
 
@@ -67,7 +68,7 @@ export function parseDiceExpression(input: string): ParsedRoll | null {
       }
       const sides = sidesStr ? parseInt(sidesStr, 10) : 20;
       if (!Number.isFinite(sides) || sides <= 0) return null;
-      terms.push({ count: num, sides });
+      terms.push({ count: num, sides, sign });
     } else {
       modifier += sign * num;
     }
@@ -92,13 +93,14 @@ export function rollDice(count: number, sides: number): number[] {
 
 export function executeParsedRoll(parsed: ParsedRoll): { results: number[]; total: number } {
   const allResults: number[] = [];
+  let total = parsed.modifier;
   for (const term of parsed.terms) {
     const rolls = rollDice(term.count, term.sides);
     term.results = rolls;
     allResults.push(...rolls);
+    const termSum = rolls.reduce((a, b) => a + b, 0);
+    total += term.sign * termSum;
   }
-  const diceSum = allResults.reduce((a, b) => a + b, 0);
-  const total = diceSum + parsed.modifier;
   return { results: allResults, total };
 }
 
@@ -112,8 +114,11 @@ export function formatRollDisplay(
   for (const term of parsed.terms) {
     const slice = results.slice(idx, idx + term.count);
     idx += term.count;
-    parts.push(`${term.count}d${term.sides}: [${slice.join(", ")}]`);
+    const prefix = term.sign < 0 ? " - " : (parts.length > 0 ? " + " : "");
+    parts.push(`${prefix}${term.count}d${term.sides}: [${slice.join(", ")}]`);
   }
-  const modStr = parsed.modifier !== 0 ? ` + ${parsed.modifier}` : "";
-  return `${parts.join(" + ")}${modStr} = ${total}`;
+  const modStr = parsed.modifier !== 0
+    ? (parsed.modifier > 0 ? ` + ${parsed.modifier}` : ` - ${Math.abs(parsed.modifier)}`)
+    : "";
+  return `${(parts.length ? parts.join("") : "")}${modStr}${parts.length || parsed.modifier !== 0 ? ` = ${total}` : ""}`.trim() || "0";
 }
