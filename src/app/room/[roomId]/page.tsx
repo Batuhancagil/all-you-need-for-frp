@@ -1411,7 +1411,7 @@ export default function RoomPage() {
       ) : null}
 
       <div className="min-h-screen bg-zinc-50 text-zinc-900">
-      <nav className="sticky top-0 z-40 border-b border-zinc-200 bg-white/95 backdrop-blur">
+      <nav className="z-40 border-b border-zinc-200 bg-white/95 backdrop-blur">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-6 py-3">
           <div className="flex min-w-0 flex-1 items-center gap-4">
             <div className="min-w-0">
@@ -1876,7 +1876,7 @@ export default function RoomPage() {
           </div>
         </section>
 
-        <section className={`grid gap-6 ${currentParticipant?.role === "admin" || isRoomAdmin ? "lg:grid-cols-[2fr_1fr]" : "lg:grid-cols-1"}`}>
+        <section className="grid gap-6 lg:grid-cols-1">
           <div className="space-y-6 min-w-0">
             <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-4">
@@ -2467,22 +2467,6 @@ export default function RoomPage() {
             </div>
           </div>
 
-          {(currentParticipant?.role === "admin" || isRoomAdmin) ? (
-            <aside className="space-y-6">
-              <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-                <h2 className="text-lg font-semibold">Admin</h2>
-                <p className="mt-1 text-sm text-zinc-500">
-                  Room defaults (name prefix, privacy), view all rooms, and metrics.
-                </p>
-                <Link
-                  className="mt-3 inline-flex text-sm font-semibold text-zinc-900 underline"
-                  href="/admin"
-                >
-                  Go to admin view
-                </Link>
-              </div>
-            </aside>
-          ) : null}
         </section>
       </main>
     </div>
