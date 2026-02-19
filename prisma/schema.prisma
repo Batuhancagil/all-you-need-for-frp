@@ -186,6 +186,7 @@ model InitiativeEntry {
   creatureName   String?
   expression     String
   result         Int
+  results        Int[]    @default([])
   sortOrder      Int
   isAlive        Boolean  @default(true)
   createdAt      DateTime @default(now())

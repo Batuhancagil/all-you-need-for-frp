@@ -396,6 +396,7 @@ export default function RoomPage() {
     roundCount: 0,
   });
   const [initiativeTurnCountInput, setInitiativeTurnCountInput] = useState("");
+  const [showTurnCountForm, setShowTurnCountForm] = useState(false);
   const [initiativeCreatureName, setInitiativeCreatureName] = useState("");
   const [initiativeExpression, setInitiativeExpression] = useState("d20");
   const [initiativeAdding, setInitiativeAdding] = useState(false);
@@ -1942,37 +1943,54 @@ export default function RoomPage() {
                       Round {initiativeState.roundCount + 1} · Turn {initiativeState.turnCount}
                     </span>
                     {canManageSession ? (
-                      <span className="flex items-center gap-1">
-                        <input
-                          type="number"
-                          min={0}
-                          className="w-14 rounded border border-zinc-200 px-2 py-0.5 text-xs"
-                          placeholder="Turn #"
-                          value={initiativeTurnCountInput}
-                          onChange={(e) => setInitiativeTurnCountInput(e.target.value)}
-                          onKeyDown={(e) =>
-                            e.key === "Enter" && (() => {
+                      showTurnCountForm ? (
+                        <span className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min={0}
+                            className="w-14 rounded border border-zinc-200 px-2 py-0.5 text-xs"
+                            placeholder="Turn #"
+                            value={initiativeTurnCountInput}
+                            onChange={(e) => setInitiativeTurnCountInput(e.target.value)}
+                            onKeyDown={(e) =>
+                              e.key === "Enter" && (() => {
+                                const n = parseInt(initiativeTurnCountInput, 10);
+                                if (!isNaN(n) && n >= 0) {
+                                  setInitiativeTurnCount(n);
+                                  setInitiativeTurnCountInput("");
+                                  setShowTurnCountForm(false);
+                                }
+                              })()
+                            }
+                          />
+                          <button
+                            className="rounded border border-zinc-200 px-2 py-0.5 text-[10px] hover:bg-zinc-100"
+                            onClick={() => {
                               const n = parseInt(initiativeTurnCountInput, 10);
                               if (!isNaN(n) && n >= 0) {
                                 setInitiativeTurnCount(n);
                                 setInitiativeTurnCountInput("");
+                                setShowTurnCountForm(false);
                               }
-                            })()
-                          }
-                        />
+                            }}
+                          >
+                            Set
+                          </button>
+                          <button
+                            className="rounded border border-zinc-200 px-2 py-0.5 text-[10px] text-zinc-500 hover:bg-zinc-100"
+                            onClick={() => setShowTurnCountForm(false)}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ) : (
                         <button
-                          className="rounded border border-zinc-200 px-2 py-0.5 text-[10px] hover:bg-zinc-100"
-                          onClick={() => {
-                            const n = parseInt(initiativeTurnCountInput, 10);
-                            if (!isNaN(n) && n >= 0) {
-                              setInitiativeTurnCount(n);
-                              setInitiativeTurnCountInput("");
-                            }
-                          }}
+                          className="rounded border border-zinc-200 px-2 py-0.5 text-[10px] text-zinc-600 hover:bg-zinc-100"
+                          onClick={() => setShowTurnCountForm(true)}
                         >
-                          Set
+                          Set turn
                         </button>
-                      </span>
+                      )
                     ) : null}
                   </div>
                   <button
@@ -2022,19 +2040,30 @@ export default function RoomPage() {
                               <span className="rounded bg-amber-400 p-0.5 text-amber-900" title="Your turn!">⚔</span>
                             ) : null}
                             {displayName}
+                            {isDead ? <span className="text-xs font-medium text-zinc-500" title="Dead">💀</span> : null}
                           </span>
-                          <span
-                            className={`inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-0.5 font-mono text-sm font-bold ${
-                              isCrit
-                                ? "bg-amber-200/90 text-amber-900"
-                                : isFumble
-                                  ? "bg-rose-200/90 text-rose-900"
-                                  : "bg-zinc-200/90 text-zinc-800"
-                            }`}
-                            title={`${e.expression} = ${e.result}`}
-                          >
-                            <span className="text-[10px] opacity-75">{e.expression}</span>
-                            <span className="tabular-nums">{e.result}</span>
+                          <span className="flex shrink-0 items-center gap-1.5">
+                            <span className="font-mono text-xs text-zinc-600">{e.expression}</span>
+                            {(e.results?.length ?? 0) > 0 ? (
+                              <>
+                                {parseExpressionSides(e.expression).map((sides, idx) => (
+                                  <span
+                                    key={idx}
+                                    className={`inline-flex h-7 min-w-[1.75rem] items-center justify-center rounded-md px-1 font-mono text-sm font-bold tabular-nums shadow-sm ${diceColor(e.results![idx] ?? 0, sides)}`}
+                                    title={`d${sides}`}
+                                  >
+                                    {e.results![idx] ?? "?"}
+                                  </span>
+                                ))}
+                                <span className="font-mono text-sm font-bold tabular-nums text-amber-900">
+                                  = {e.result}
+                                </span>
+                              </>
+                            ) : (
+                              <span className="rounded-md bg-zinc-200/90 px-2 py-0.5 font-mono text-sm font-bold tabular-nums text-zinc-800">
+                                {e.result}
+                              </span>
+                            )}
                           </span>
                         </div>
                         <div className="flex shrink-0 items-center gap-1">
