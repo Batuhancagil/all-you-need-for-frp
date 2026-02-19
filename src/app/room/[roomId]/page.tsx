@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { LiveKitRoom, VideoConference, useLocalParticipant } from "@livekit/components-react";
+import { FloatingVideoConference } from "@/components/FloatingVideoConference";
 import "@livekit/components-styles";
 import { Track } from "livekit-client";
 import { buildVideoChannelRoomName, buildVideoRoomName } from "@/lib/video-room";
@@ -1945,7 +1946,7 @@ export default function RoomPage() {
                           pttKeyCode={pttKeyCode}
                           noiseThreshold={noiseThreshold}
                         />
-                        <VideoConference />
+                        {floatVideos ? <FloatingVideoConference /> : <VideoConference />}
                       </LiveKitRoom>
                     </div>
                       ) : (
@@ -1997,7 +1998,8 @@ export default function RoomPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border-2 border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 p-6 shadow-md">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <div className="min-w-0 rounded-2xl border-2 border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 p-6 shadow-md">
               <h2 className="text-lg font-bold text-amber-900">⚔ Initiative tracker</h2>
               <p className="text-xs text-amber-700/80">Roll to see who strikes first. GM rolls for monsters, you roll for you.</p>
               {canManageSession ? (
@@ -2204,7 +2206,7 @@ export default function RoomPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+            <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm min-w-0">
               <h2 className="text-lg font-semibold">Dice</h2>
               {previousRoll ? (
                 <p className="mt-3 text-xs text-zinc-500">
@@ -2384,6 +2386,7 @@ export default function RoomPage() {
                   })
                 )}
               </div>
+            </div>
             </div>
 
             {canManageSession ? (
