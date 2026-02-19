@@ -232,7 +232,6 @@ export function MusicPlayer({
               type="button"
               onClick={() => setExpanded(true)}
               className="rounded-full p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
-              className="rounded-full p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700"
               title="Expand to set music"
               aria-label="Expand"
             >
