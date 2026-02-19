@@ -385,6 +385,7 @@ export default function RoomPage() {
   const chatCursorRef = useRef<string>(new Date().toISOString());
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
+  const isSwitchingVoiceChannelRef = useRef(false);
   const [audioMode, setAudioMode] = useState<"always" | "ptt">("always");
   const [pttKeyCode, setPttKeyCode] = useState<string>("Space");
   const [noiseThreshold, setNoiseThreshold] = useState(5);
@@ -1173,6 +1174,9 @@ export default function RoomPage() {
     }
     setCallError(null);
     setCallFrameReady(false);
+    if (callJoined) {
+      isSwitchingVoiceChannelRef.current = true;
+    }
 
     if (!LIVEKIT_URL) {
       setCallError("Video server URL is missing. Set NEXT_PUBLIC_LIVEKIT_URL in env.");
@@ -2055,9 +2059,17 @@ export default function RoomPage() {
                       data-lk-theme="default"
                       options={{ adaptiveStream: true, dynacast: true }}
                       className="call-room h-full w-full"
-                      onConnected={() => setCallFrameReady(true)}
-                      onDisconnected={() => void handleQuitCall()}
-                      onError={(liveKitError) => setCallError(liveKitError.message)}
+                      onConnected={() => {
+                        isSwitchingVoiceChannelRef.current = false;
+                        setCallFrameReady(true);
+                      }}
+                      onDisconnected={() => {
+                        if (!isSwitchingVoiceChannelRef.current) void handleQuitCall();
+                      }}
+                      onError={(liveKitError) => {
+                        isSwitchingVoiceChannelRef.current = false;
+                        setCallError(liveKitError.message);
+                      }}
                     >
                       <VoiceRuntimeControls
                         mode={audioMode}
