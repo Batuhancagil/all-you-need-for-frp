@@ -110,10 +110,10 @@ body {
 }
 
 /* Dice shapes – each polyhedral has a distinct 2D silhouette */
-.dice-shape-d4 { clip-path: polygon(50% 0%, 100% 100%, 0% 100%); }
-.dice-shape-d6 { clip-path: polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%); }
-.dice-shape-d8 { clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); }
-.dice-shape-d10 { clip-path: polygon(50% 0%, 100% 35%, 82% 100%, 18% 100%, 0% 35%); }
-.dice-shape-d12 { clip-path: polygon(50% 0%, 95% 25%, 95% 75%, 50% 100%, 5% 75%, 5% 25%); }
-.dice-shape-d20 { clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%); }
-.dice-shape-d100 { clip-path: circle(50%); }
+.dice-shape-d4 { aspect-ratio: 1; clip-path: polygon(50% 5%, 95% 95%, 5% 95%); } /* △ triangle */
+.dice-shape-d6 { aspect-ratio: 1; clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%); } /* □ square */
+.dice-shape-d8 { aspect-ratio: 1; clip-path: polygon(50% 2%, 98% 50%, 50% 98%, 2% 50%); } /* ◇ diamond */
+.dice-shape-d10 { aspect-ratio: 1; clip-path: polygon(50% 2%, 95% 35%, 78% 95%, 22% 95%, 5% 35%); } /* ⬠ pentagon */
+.dice-shape-d12 { aspect-ratio: 1; clip-path: polygon(50% 0%, 90% 20%, 90% 80%, 50% 100%, 10% 80%, 10% 20%); } /* ⬡ hexagon */
+.dice-shape-d20 { aspect-ratio: 1; clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%); } /* ⬢ hex flat */
+.dice-shape-d100 { aspect-ratio: 1; clip-path: circle(50%); } /* ○ circle */

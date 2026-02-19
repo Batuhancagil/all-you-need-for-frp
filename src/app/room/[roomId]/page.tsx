@@ -128,12 +128,18 @@ function getTermSides(roll: Roll): number[] {
   return Array(roll.count).fill(roll.sides);
 }
 
-/** Shape class for die with given sides (d4=diamond, d6=square, d8=diamond, d10=d10, d12=d12, d20=hex, d100=circle). */
+/** Shape class for die with given sides. Each standard polyhedral has a unique 2D shape. */
 function diceShapeClass(sides: number): string {
+  if (sides === 4) return "dice-shape-d4";   // triangle
+  if (sides === 6) return "dice-shape-d6";  // square
+  if (sides === 8) return "dice-shape-d8";  // diamond
+  if (sides === 10) return "dice-shape-d10"; // pentagon
+  if (sides === 12) return "dice-shape-d12";// hexagon
+  if (sides === 20) return "dice-shape-d20"; // hexagon (flat)
+  if (sides >= 100) return "dice-shape-d100";// circle
   if (sides <= 4) return "dice-shape-d4";
   if (sides <= 6) return "dice-shape-d6";
   if (sides <= 8) return "dice-shape-d8";
-  if (sides <= 10) return "dice-shape-d10";
   if (sides <= 12) return "dice-shape-d12";
   if (sides <= 20) return "dice-shape-d20";
   return "dice-shape-d100";
@@ -1332,7 +1338,7 @@ export default function RoomPage() {
           role="dialog"
           aria-label="Dice roll"
         >
-          <div className="mx-4 flex min-w-[280px] max-w-md flex-col items-center rounded-2xl border-2 border-amber-200/50 bg-gradient-to-b from-amber-50 to-amber-100/80 px-8 py-10 shadow-2xl">
+          <div className="mx-4 flex min-w-[320px] shrink-0 max-w-md flex-col items-center rounded-2xl border-2 border-amber-200/50 bg-gradient-to-b from-amber-50 to-amber-100/80 px-8 py-10 shadow-2xl">
             {rollOverlay.phase === "rolling" ? (
               <>
                 <p className="mb-6 text-lg font-semibold uppercase tracking-widest text-amber-900/80">
@@ -2136,7 +2142,7 @@ export default function RoomPage() {
                                 {parseExpressionSides(e.expression).map((sides, idx) => (
                                   <span
                                     key={idx}
-                                    className={`inline-flex h-7 min-w-[1.75rem] items-center justify-center px-1 font-mono text-sm font-bold tabular-nums shadow-sm ${diceShapeClass(sides)} ${diceColor(e.results![idx] ?? 0, sides)}`}
+                                    className={`inline-flex h-7 w-7 shrink-0 items-center justify-center font-mono text-sm font-bold tabular-nums shadow-sm ${diceShapeClass(sides)} ${diceColor(e.results![idx] ?? 0, sides)}`}
                                     title={`d${sides}`}
                                   >
                                     {e.results![idx] ?? "?"}
