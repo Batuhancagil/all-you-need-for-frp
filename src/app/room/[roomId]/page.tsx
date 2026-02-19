@@ -370,6 +370,7 @@ export default function RoomPage() {
   const [diceError, setDiceError] = useState<string | null>(null);
   const [rollingDice, setRollingDice] = useState(false);
   const [lastRoll, setLastRoll] = useState<Roll | null>(null);
+  const [previousRoll, setPreviousRoll] = useState<Roll | null>(null);
   const [rollOverlay, setRollOverlay] = useState<
     | { phase: "rolling"; expression: string }
     | { phase: "reveal"; data: RollRevealData }
@@ -561,6 +562,35 @@ export default function RoomPage() {
     interval = setInterval(async () => {
       loadParticipants();
       loadRolls();
+      const roomRes = await fetch(`/api/rooms/${roomId}`);
+      const roomPayload = (await roomRes.json()) as ApiResponse<{
+        id: string;
+        name: string;
+        inviteCode: string;
+        sessionState: string;
+        gmId: string | null;
+        createdByParticipantId: string | null;
+        recap: string | null;
+        backgroundMusicUrl: string | null;
+      }>;
+      if (roomPayload.data) {
+        const d = roomPayload.data;
+        setRoom((prev) =>
+          prev
+            ? {
+                ...prev,
+                name: d.name,
+                inviteCode: d.inviteCode,
+                sessionState: d.sessionState as "waiting" | "active" | "ended",
+                gmId: d.gmId,
+                createdByParticipantId: d.createdByParticipantId,
+                recap: d.recap,
+                backgroundMusicUrl: d.backgroundMusicUrl,
+              }
+            : prev
+        );
+        if (d.backgroundMusicUrl) setMusicUrl(d.backgroundMusicUrl);
+      }
       const initRes = await fetch(`/api/rooms/${roomId}/initiative`);
       const initPayload = (await initRes.json()) as ApiResponse<{
         entries: InitiativeEntry[];
@@ -767,7 +797,10 @@ export default function RoomPage() {
         });
         setTimeout(() => {
           setRolls((prev) => [newRoll, ...prev].slice(0, 50));
-          setLastRoll(newRoll);
+          setLastRoll((prev) => {
+            if (prev) setPreviousRoll(prev);
+            return newRoll;
+          });
           setRollOverlay(null);
           setRollingDice(false);
         }, REVEAL_DISPLAY_MS);
@@ -1350,15 +1383,19 @@ export default function RoomPage() {
             <p className="text-sm text-zinc-500">Session: {room.sessionState}</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <span className="rounded-full border border-zinc-200 px-3 py-1 text-xs text-zinc-600">
-              Invite: {room.inviteCode}
-            </span>
             <button
-              className="inline-flex items-center rounded-full border border-zinc-200 px-3 py-1 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-100"
+              type="button"
+              className="rounded-lg border-2 border-zinc-200 bg-zinc-50 px-4 py-2 font-mono text-sm font-semibold tracking-wider text-zinc-800 transition hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800"
               onClick={handleCopyInviteCode}
+              title="Click to copy"
             >
-              {inviteCopied ? "Copied" : "Copy invite"}
+              {room.inviteCode}
             </button>
+            {inviteCopied ? (
+              <span className="text-xs font-medium text-emerald-600">Copied!</span>
+            ) : (
+              <span className="text-[11px] text-zinc-500">Click to copy</span>
+            )}
             {inviteCopyError ? <span className="text-xs text-amber-600">{inviteCopyError}</span> : null}
             <button
               className="rounded-full border border-rose-200 px-3 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50"
@@ -1681,24 +1718,7 @@ export default function RoomPage() {
             <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <h2 className="text-lg font-semibold">Session controls</h2>
-                {canManageSession ? (
-                  <div className="flex gap-2">
-                    <button
-                      className="rounded-full bg-emerald-600 px-4 py-2 text-xs font-semibold text-white"
-                      onClick={startSession}
-                    >
-                      Start session
-                    </button>
-                    <button
-                      className="rounded-full bg-zinc-900 px-4 py-2 text-xs font-semibold text-white"
-                      onClick={endSession}
-                    >
-                      End session
-                    </button>
-                  </div>
-                ) : (
-                  <p className="text-xs text-zinc-500">Only GM/admin can start/end.</p>
-                )}
+                {/* Start/End session: marks room as active/ended, records timestamps for admin metrics. Hidden for now. */}
               </div>
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 {callJoined ? (
@@ -1989,6 +2009,12 @@ export default function RoomPage() {
 
             <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold">Dice</h2>
+              {previousRoll ? (
+                <p className="mt-3 text-xs text-zinc-500">
+                  Previous: {previousRoll.participantName} → {previousRoll.total}
+                  {previousRoll.expression ? ` (${previousRoll.expression})` : ""}
+                </p>
+              ) : null}
               {lastRoll ? (
                 <div className="mt-4 rounded-xl border-2 border-amber-200 bg-amber-50 p-4 text-center">
                   <p className="text-xs font-medium text-amber-800">{lastRoll.participantName}</p>
@@ -2008,89 +2034,115 @@ export default function RoomPage() {
                   </p>
                 </div>
               ) : null}
-              <div className="mt-4 flex flex-wrap items-center gap-2">
-                <input
-                  className="min-w-[140px] rounded-lg border border-zinc-200 px-3 py-2 text-sm"
-                  value={diceExpression}
-                  onChange={(e) => setDiceExpression(e.target.value)}
-                  placeholder="2d4+3, d100, 1d20"
-                />
-                <button
-                  className={`rounded-full px-5 py-2.5 text-sm font-bold text-white transition ${rollingDice ? "animate-bounce bg-amber-500" : "bg-zinc-900 hover:bg-zinc-800"}`}
-                  onClick={() => rollDice()}
-                  disabled={rollingDice}
-                >
-                  {rollingDice ? "Rolling…" : "Roll"}
-                </button>
-                {namedRollInput !== null ? (
-                  <span className="flex items-center gap-1">
+              <div className="mt-6 space-y-4">
+                <div className="rounded-xl border-2 border-amber-200/60 bg-amber-50/50 p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-700/80">
+                    Ready to roll
+                  </p>
+                  <p className="mt-1 font-mono text-2xl font-bold tabular-nums text-amber-900">
+                    {(diceExpression.trim() || "d20")}
+                  </p>
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
                     <input
-                      className="w-24 rounded border border-zinc-200 px-2 py-1 text-xs"
-                      placeholder="e.g. damage"
-                      value={namedRollInput}
-                      onChange={(e) => setNamedRollInput(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && saveNamedRoll(namedRollInput)}
-                      autoFocus
+                      className="min-w-[160px] rounded-lg border-2 border-amber-200/80 bg-white px-4 py-2.5 font-mono text-sm"
+                      value={diceExpression}
+                      onChange={(e) => setDiceExpression(e.target.value)}
+                      placeholder="d20, 2d6+3, d100"
                     />
                     <button
-                      className="rounded bg-emerald-600 px-2 py-1 text-xs text-white"
-                      onClick={() => saveNamedRoll(namedRollInput)}
+                      className={`rounded-xl px-8 py-3 text-base font-bold text-white shadow-md transition ${rollingDice ? "animate-bounce bg-amber-500" : "bg-amber-600 hover:bg-amber-500"}`}
+                      onClick={() => rollDice()}
+                      disabled={rollingDice}
                     >
-                      Save
+                      {rollingDice ? "Rolling…" : "Roll"}
                     </button>
-                    <button
-                      className="rounded border px-2 py-1 text-xs"
-                      onClick={() => setNamedRollInput(null)}
-                    >
-                      Cancel
-                    </button>
-                  </span>
-                ) : (
-                  <button
-                    className="rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-medium hover:bg-zinc-100"
-                    onClick={() => setNamedRollInput("")}
-                    title="Save current roll with a name"
-                  >
-                    + Name
-                  </button>
-                )}
-                {Object.entries(namedRolls).map(([name, expr]) => (
-                  <button
-                    key={name}
-                    className="group flex items-center gap-1 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-medium hover:bg-zinc-200"
-                    onClick={() => { setDiceExpression(expr); rollDice(expr); }}
-                    title={`${name}: ${expr}`}
-                  >
-                    <span>{name}</span>
-                    <span
-                      className="ml-1 cursor-pointer rounded-full p-0.5 text-zinc-400 hover:bg-zinc-300 hover:text-zinc-600"
-                      onClick={(e) => { e.stopPropagation(); removeNamedRoll(name); }}
-                      title="Remove"
-                    >
-                      ×
-                    </span>
-                  </button>
-                ))}
-                {["d20", "d100", "2d4+3"].map((expr) => (
-                  <button
-                    key={expr}
-                    className="rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-medium hover:bg-zinc-100"
-                    onClick={() => { setDiceExpression(expr); rollDice(expr); }}
-                  >
-                    {expr}
-                  </button>
-                ))}
-                {canManageSession ? (
-                  <button
-                    className="rounded-full border border-zinc-200 px-4 py-2 text-xs font-semibold"
-                    onClick={clearRollLog}
-                  >
-                    Clear log
-                  </button>
+                    {namedRollInput !== null ? (
+                      <div className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-2">
+                        <input
+                          className="w-28 rounded border border-zinc-200 px-2 py-1.5 text-sm"
+                          placeholder="e.g. damage"
+                          value={namedRollInput}
+                          onChange={(e) => setNamedRollInput(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && saveNamedRoll(namedRollInput)}
+                          autoFocus
+                        />
+                        <button
+                          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white"
+                          onClick={() => saveNamedRoll(namedRollInput)}
+                        >
+                          Save
+                        </button>
+                        <button
+                          className="rounded-lg border border-zinc-200 px-3 py-1.5 text-xs font-medium"
+                          onClick={() => setNamedRollInput(null)}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        className="rounded-lg border-2 border-dashed border-zinc-300 px-4 py-2 text-xs font-medium text-zinc-600 hover:border-amber-300 hover:text-amber-700"
+                        onClick={() => setNamedRollInput("")}
+                        title="Save this roll with a name for quick access"
+                      >
+                        + Save as…
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {Object.keys(namedRolls).length > 0 ? (
+                  <div>
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+                      Saved rolls
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {Object.entries(namedRolls).map(([name, expr]) => (
+                        <button
+                          key={name}
+                          className="group flex items-center gap-2 rounded-xl border-2 border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm font-medium transition hover:border-amber-300 hover:bg-amber-50"
+                          onClick={() => { setDiceExpression(expr); rollDice(expr); }}
+                          title={`${name}: ${expr} — click to roll`}
+                        >
+                          <span className="text-zinc-800">{name}</span>
+                          <span className="font-mono text-xs text-zinc-500">{expr}</span>
+                          <span
+                            className="ml-1 rounded-full p-1 text-zinc-400 opacity-0 transition hover:bg-zinc-200 hover:text-rose-600 group-hover:opacity-100"
+                            onClick={(e) => { e.stopPropagation(); removeNamedRoll(name); }}
+                            title="Remove"
+                          >
+                            ×
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 ) : null}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Quick:</span>
+                  {["d20", "d12", "d100", "2d6+3"].map((expr) => (
+                    <button
+                      key={expr}
+                      className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 font-mono text-sm font-medium hover:bg-amber-50 hover:border-amber-200"
+                      onClick={() => { setDiceExpression(expr); rollDice(expr); }}
+                    >
+                      {expr}
+                    </button>
+                  ))}
+                  {canManageSession ? (
+                    <button
+                      className="ml-4 rounded-lg border border-rose-200 px-4 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                      onClick={clearRollLog}
+                      title="Only GM/admin can clear"
+                    >
+                      Clear log
+                    </button>
+                  ) : null}
+                </div>
               </div>
-              {diceError ? <p className="mt-2 text-xs text-amber-600">{diceError}</p> : null}
-              <p className="mt-2 text-[11px] text-zinc-500">Recent rolls (full history in 🎲 dice channel)</p>
+              {diceError ? <p className="mt-3 text-xs text-amber-600">{diceError}</p> : null}
+              <p className="mt-3 text-[11px] text-zinc-500">
+                Roll again if wrong — previous stays visible. Full history in 🎲 dice channel.
+              </p>
               <div className="mt-3 space-y-2 max-h-40 overflow-y-auto">
                 {rolls.length === 0 ? (
                   <p className="text-xs text-zinc-500">No rolls yet.</p>
