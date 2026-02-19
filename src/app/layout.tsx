@@ -14,8 +14,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className="antialiased">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){var t=localStorage.getItem("aynfrp:theme")||"light";document.documentElement.classList.toggle("dark",t==="dark");})();`,
+          }}
+        />
+      </head>
+      <body className="antialiased bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
         <Providers>
           <TopNav />
           {children}

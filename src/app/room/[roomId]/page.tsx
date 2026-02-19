@@ -433,6 +433,8 @@ export default function RoomPage() {
     return localStorage.getItem("aynfrp:floatVideos") === "1";
   });
   const [floatingVideoSize, setFloatingVideoSize] = useState<{ w: number; h: number } | null>(null);
+  const [floatingVideoMinimized, setFloatingVideoMinimized] = useState(false);
+  const [musicModuleOpen, setMusicModuleOpen] = useState(false);
   const [floatingVideoPosition, setFloatingVideoPosition] = useState<{ x: number; y: number } | null>(() => {
     if (typeof window === "undefined") return null;
     try {
@@ -757,6 +759,13 @@ export default function RoomPage() {
       element.scrollTop = element.scrollHeight;
     });
   }, [chatMessages, selectedTextChannelId]);
+
+  useEffect(() => {
+    if (callJoined && selectedChannel?.type !== "voice") {
+      setFloatVideos(true);
+      setFloatingVideoMinimized(false);
+    }
+  }, [callJoined, selectedChannel?.type]);
 
   async function joinViaInvite() {
     setError(null);
@@ -1424,13 +1433,13 @@ export default function RoomPage() {
         </div>
       ) : null}
 
-      <div className="min-h-screen bg-zinc-50 text-zinc-900">
-      <nav className="z-40 border-b border-zinc-200 bg-white/95 backdrop-blur">
+      <div className="min-h-screen bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+      <nav className="z-40 border-b border-zinc-200 bg-white/95 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-6 py-3">
           <div className="flex min-w-0 flex-1 items-center gap-4">
             <div className="min-w-0">
-              <h1 className="truncate text-lg font-semibold text-zinc-900">{room.name}</h1>
-              <p className="text-xs text-zinc-500">Session: {room.sessionState}</p>
+              <h1 className="truncate text-lg font-semibold text-zinc-900 dark:text-zinc-100">{room.name}</h1>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">Session: {room.sessionState}</p>
             </div>
             <div className="group relative shrink-0">
               <button
@@ -1580,7 +1589,7 @@ export default function RoomPage() {
         ) : null}
 
         <section className="grid gap-6 lg:grid-cols-[260px_1fr]">
-          <aside className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+          <aside className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
             <div className="flex items-center justify-between">
               <p className="text-xs font-semibold uppercase tracking-[0.1em] text-zinc-500">Channels</p>
               <button
@@ -1704,7 +1713,7 @@ export default function RoomPage() {
             </div>
             {channelsError ? <p className="mt-3 text-xs text-amber-600">{channelsError}</p> : null}
           </aside>
-          <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+          <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
             {selectedChannel?.type === "dice" ? (
               <div>
                 <h3 className="text-base font-semibold">🎲 {selectedChannel.name}</h3>
@@ -1877,19 +1886,29 @@ export default function RoomPage() {
                 ) : null}
                 {callJoined ? (
                   <>
-                    <div className="mt-4 flex items-center gap-2">
-                      <label className="flex items-center gap-2 text-xs">
+                    <div className="mt-4 flex flex-wrap items-center gap-3">
+                      <label className="flex items-center gap-2 text-xs dark:text-zinc-400">
                         <input
                           type="checkbox"
                           checked={floatVideos}
                           onChange={(e) => {
                             const v = e.target.checked;
                             setFloatVideos(v);
+                            setFloatingVideoMinimized(false);
                             localStorage.setItem("aynfrp:floatVideos", v ? "1" : "0");
                           }}
                         />
                         <span>Float videos</span>
                       </label>
+                      {(canManageSession || room?.backgroundMusicUrl) && (
+                        <button
+                          type="button"
+                          className="rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                          onClick={() => setMusicModuleOpen(true)}
+                        >
+                          Background music
+                        </button>
+                      )}
                       {callFrameReady ? (
                         <span className="rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-semibold text-emerald-700">
                           Connected
@@ -1900,12 +1919,26 @@ export default function RoomPage() {
                         </span>
                       )}
                     </div>
+                    {floatVideos && floatingVideoMinimized ? (
+                      <button
+                        type="button"
+                        className="fixed bottom-4 right-24 z-50 flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-4 py-2 text-xs font-semibold text-zinc-700 shadow-lg hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                        onClick={() => setFloatingVideoMinimized(false)}
+                        title="Show video"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M23 7l-7 5 7 5V7z" />
+                          <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+                        </svg>
+                        Show video
+                      </button>
+                    ) : null}
                     <div
-                      className={`mt-4 rounded-xl border border-zinc-200 overflow-hidden ${
-                        floatVideos ? "fixed z-50 shadow-xl floating-video-panel" : ""
+                      className={`rounded-xl border border-zinc-200 overflow-hidden dark:border-zinc-700 ${
+                        floatVideos && !floatingVideoMinimized ? "fixed z-50 shadow-xl floating-video-panel mt-0" : "mt-4"
                       }`}
                       style={
-                        floatVideos
+                        floatVideos && !floatingVideoMinimized
                           ? {
                               width: floatingVideoSize?.w ?? 420,
                               height: floatingVideoSize?.h ?? 280,
@@ -1921,9 +1954,9 @@ export default function RoomPage() {
                           : undefined
                       }
                     >
-                      {floatVideos && (
+                      {floatVideos && !floatingVideoMinimized && (
                         <div
-                          className="absolute left-0 right-0 top-0 z-20 h-7 cursor-grab active:cursor-grabbing flex items-center justify-center border-b border-zinc-200/80 bg-zinc-100/90 hover:bg-zinc-200/80 transition-colors rounded-t-xl"
+                          className="absolute left-0 right-0 top-0 z-20 flex h-7 cursor-grab items-center justify-between border-b border-zinc-200/80 bg-zinc-100/90 px-2 transition-colors hover:bg-zinc-200/80 active:cursor-grabbing rounded-t-xl dark:border-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700"
                           onMouseDown={(e) => {
                             e.preventDefault();
                             const startX = e.clientX;
@@ -1953,10 +1986,21 @@ export default function RoomPage() {
                           }}
                           title="Drag to move"
                         >
-                          <span className="text-[10px] font-medium text-zinc-500 select-none">⋮⋮</span>
+                          <span className="text-[10px] font-medium text-zinc-500 select-none dark:text-zinc-400">⋮⋮</span>
+                          <button
+                            type="button"
+                            className="rounded p-1 text-zinc-500 hover:bg-zinc-300/80 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-600 dark:hover:text-zinc-100"
+                            onClick={() => setFloatingVideoMinimized(true)}
+                            title="Minimize video"
+                            aria-label="Minimize video"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M18 15l-6-6-6 6" />
+                            </svg>
+                          </button>
                         </div>
                       )}
-                      {floatVideos && (
+                      {floatVideos && !floatingVideoMinimized && (
                         <div
                           className="absolute left-0 top-7 z-10 h-[calc(100%-1.75rem)] w-2 cursor-ew-resize bg-zinc-300/50 opacity-0 transition-opacity hover:opacity-100"
                           onMouseDown={(e) => {
@@ -1978,7 +2022,7 @@ export default function RoomPage() {
                           title="Drag to resize"
                         />
                       )}
-                      {floatVideos && (
+                      {floatVideos && !floatingVideoMinimized && (
                         <div
                           className="absolute bottom-0 left-0 right-0 z-10 h-2 cursor-ns-resize bg-zinc-300/50 opacity-0 transition-opacity hover:opacity-100"
                           onMouseDown={(e) => {
@@ -2287,7 +2331,7 @@ export default function RoomPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm min-w-0">
+            <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 min-w-0 dark:border-zinc-800 dark:bg-zinc-900">
               <h2 className="text-lg font-semibold">Dice</h2>
               {previousRoll ? (
                 <p className="mt-3 text-xs text-zinc-500">
@@ -2470,7 +2514,7 @@ export default function RoomPage() {
             </div>
             </div>
 
-            <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+            <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
               <h2 className="text-lg font-semibold">Recap</h2>
               <p className="text-sm text-zinc-500">Capture a short recap after the session.</p>
               <textarea
@@ -2503,6 +2547,8 @@ export default function RoomPage() {
         setBackgroundMusic={setBackgroundMusic}
         musicError={musicError}
         canManageSession={canManageSession}
+        open={musicModuleOpen}
+        onClose={() => setMusicModuleOpen(false)}
       />
     </div>
     </>

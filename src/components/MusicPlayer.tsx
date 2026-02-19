@@ -38,6 +38,8 @@ type Props = {
   setBackgroundMusic: (url?: string) => void;
   musicError: string | null;
   canManageSession: boolean;
+  open?: boolean;
+  onClose?: () => void;
 };
 
 export function MusicPlayer({
@@ -47,9 +49,15 @@ export function MusicPlayer({
   setBackgroundMusic,
   musicError,
   canManageSession,
+  open: controlledOpen,
+  onClose,
 }: Props) {
   const [playing, setPlaying] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [showVideo, setShowVideo] = useState(false);
+  const effectiveExpanded = controlledOpen ? true : expanded;
+  const effectiveShowVideo = controlledOpen ? true : showVideo;
+  const [videoSize, setVideoSize] = useState({ w: 320, h: 180 });
   const playerRef = useRef<YTPlayer | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const videoId = extractVideoId(backgroundMusicUrl);
@@ -123,19 +131,63 @@ export function MusicPlayer({
 
   return (
     <>
-      {/* Hidden container for YouTube player - no visible video */}
       {hasMusic && (
         <div
           key={videoId}
-          ref={containerRef}
-          className="pointer-events-none invisible fixed left-[-9999px] top-0 h-px w-px"
-          aria-hidden
-        />
+          className={`fixed right-4 z-40 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-900 shadow-xl dark:border-zinc-700 ${
+            effectiveShowVideo ? "bottom-20" : "pointer-events-none invisible -bottom-[9999px]"
+          }`}
+          style={effectiveShowVideo ? { width: videoSize.w, height: videoSize.h } : { width: 1, height: 1 }}
+        >
+          <div ref={containerRef} className="h-full w-full" />
+          {effectiveShowVideo && (
+            <>
+              <div
+                className="absolute bottom-0 left-0 right-0 z-10 h-2 cursor-ns-resize bg-zinc-500/50 opacity-0 hover:opacity-100 transition-opacity"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  const startY = e.clientY;
+                  const startH = videoSize.h;
+                  const onMove = (e2: MouseEvent) => {
+                    const dy = startY - e2.clientY;
+                    const newH = Math.max(120, Math.min(480, startH + dy));
+                    setVideoSize((s) => ({ ...s, h: newH }));
+                  };
+                  const onUp = () => {
+                    document.removeEventListener("mousemove", onMove);
+                    document.removeEventListener("mouseup", onUp);
+                  };
+                  document.addEventListener("mousemove", onMove);
+                  document.addEventListener("mouseup", onUp);
+                }}
+              />
+              <div
+                className="absolute left-0 top-0 bottom-0 z-10 w-2 cursor-ew-resize bg-zinc-500/50 opacity-0 hover:opacity-100 transition-opacity"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  const startX = e.clientX;
+                  const startW = videoSize.w;
+                  const onMove = (e2: MouseEvent) => {
+                    const dx = startX - e2.clientX;
+                    const newW = Math.max(200, Math.min(600, startW + dx));
+                    setVideoSize((s) => ({ ...s, w: newW }));
+                  };
+                  const onUp = () => {
+                    document.removeEventListener("mousemove", onMove);
+                    document.removeEventListener("mouseup", onUp);
+                  };
+                  document.addEventListener("mousemove", onMove);
+                  document.addEventListener("mouseup", onUp);
+                }}
+              />
+            </>
+          )}
+        </div>
       )}
 
       <div
-        className={`fixed bottom-4 right-4 z-40 flex flex-col gap-2 rounded-2xl border border-zinc-200 bg-white shadow-lg transition-all group ${
-          expanded ? "p-4 min-w-[280px]" : "rounded-full p-1.5 gap-1"
+        className={`fixed bottom-4 right-4 z-40 flex flex-col gap-2 rounded-2xl border border-zinc-200 bg-white shadow-lg transition-all group dark:border-zinc-700 dark:bg-zinc-900 ${
+          effectiveExpanded ? "p-4 min-w-[280px]" : "rounded-full p-1.5 gap-1"
         }`}
       >
         <div className="flex items-center gap-2">
@@ -158,14 +210,14 @@ export function MusicPlayer({
               </svg>
             )}
           </button>
-          {expanded ? (
+          {effectiveExpanded ? (
             <>
-              <span className="text-xs font-medium text-zinc-600">
+              <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
                 {hasMusic ? (playing ? "Playing" : "Paused") : "No music"}
               </span>
               <button
                 type="button"
-                onClick={() => setExpanded(false)}
+                onClick={() => { setExpanded(false); onClose?.(); }}
                 className="ml-auto rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700"
                 title="Minimize"
                 aria-label="Minimize"
@@ -179,6 +231,7 @@ export function MusicPlayer({
             <button
               type="button"
               onClick={() => setExpanded(true)}
+              className="rounded-full p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
               className="rounded-full p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700"
               title="Expand to set music"
               aria-label="Expand"
@@ -190,8 +243,18 @@ export function MusicPlayer({
           )}
         </div>
 
-        {expanded && (
+        {effectiveExpanded && (
           <>
+            {hasMusic && !controlledOpen && (
+              <label className="flex items-center gap-2 text-xs dark:text-zinc-400">
+                <input
+                  type="checkbox"
+                  checked={showVideo}
+                  onChange={(e) => setShowVideo(e.target.checked)}
+                />
+                <span>Show video</span>
+              </label>
+            )}
             {canManageSession && (
               <div className="flex flex-col gap-2">
                 <input
