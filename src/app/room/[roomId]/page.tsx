@@ -1418,29 +1418,44 @@ export default function RoomPage() {
               <h1 className="truncate text-lg font-semibold text-zinc-900">{room.name}</h1>
               <p className="text-xs text-zinc-500">Session: {room.sessionState}</p>
             </div>
-            <button
-              type="button"
-              className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 font-mono text-sm font-semibold tracking-wider text-zinc-800 transition hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800"
-              onClick={handleCopyInviteCode}
-              title={inviteCopied ? "Copied" : "Copy invite code"}
-            >
+            <div className="group relative shrink-0">
+              <button
+                type="button"
+                className="inline-flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 font-mono text-sm font-semibold tracking-wider text-zinc-800 transition hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800"
+                onClick={handleCopyInviteCode}
+                title={inviteCopied ? "Copied" : "Copy invite code"}
+              >
               <span>{room.inviteCode}</span>
               <span className={`text-base ${inviteCopied ? "text-emerald-600" : ""}`}>
                 {inviteCopied ? "✓" : "📋"}
               </span>
             </button>
+              <span className="pointer-events-none absolute -bottom-8 left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded bg-zinc-800 px-2 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100">
+                {inviteCopied ? "Copied" : "Copy invite code"}
+              </span>
+            </div>
             {inviteCopyError ? <span className="shrink-0 text-xs text-amber-600">{inviteCopyError}</span> : null}
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <div className="relative">
+            <div className="relative group">
               <button
                 className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
                 onClick={() => setParticipantsOpen((o) => !o)}
                 title="Participants"
                 aria-label="Participants"
               >
-                👥
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                </svg>
               </button>
+              {!participantsOpen && (
+                <span className="pointer-events-none absolute -bottom-8 left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded bg-zinc-800 px-2 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100">
+                  Participants
+                </span>
+              )}
               {participantsOpen ? (
                 <>
                   <div className="fixed inset-0 z-40" aria-hidden onClick={() => setParticipantsOpen(false)} />
@@ -1507,22 +1522,36 @@ export default function RoomPage() {
                 </>
               ) : null}
             </div>
-            <button
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50"
-              onClick={leaveRoom}
-              title="Leave room"
-              aria-label="Leave room"
-            >
-              🚪
-            </button>
-            <Link
-              href="/join"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
-              title="Back to join"
-              aria-label="Back to join"
-            >
-              ↩
-            </Link>
+            <div className="group relative">
+              <button
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50"
+                onClick={leaveRoom}
+                title="Leave room"
+                aria-label="Leave room"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+              </button>
+              <span className="pointer-events-none absolute -bottom-8 left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded bg-zinc-800 px-2 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100">
+                Leave room
+              </span>
+            </div>
+            <div className="group relative">
+              <Link
+                href="/join"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+                title="Back to join"
+                aria-label="Back to join"
+              >
+                ↩
+              </Link>
+              <span className="pointer-events-none absolute -bottom-8 left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded bg-zinc-800 px-2 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100">
+                Back to join
+              </span>
+            </div>
           </div>
         </div>
       </nav>
@@ -2167,13 +2196,17 @@ export default function RoomPage() {
                           >
                             {isDead ? <span title="Mark alive">❤️</span> : <span title="Mark dead">💀</span>}
                           </button>
-                          {canManageSession && isCreature ? (
+                          {canManageSession ? (
                             <button
-                              className="rounded px-2 py-1 text-[10px] font-medium text-rose-600 hover:bg-rose-100"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 hover:bg-rose-100 hover:text-rose-600"
                               onClick={() => removeInitiativeEntry(e.id)}
-                              title="Remove creature"
+                              title="Remove from initiative"
+                              aria-label="Remove"
                             >
-                              Remove
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18" />
+                                <line x1="6" y1="6" x2="18" y2="18" />
+                              </svg>
                             </button>
                           ) : null}
                         </div>
