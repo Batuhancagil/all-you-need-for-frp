@@ -433,6 +433,17 @@ export default function RoomPage() {
     return localStorage.getItem("aynfrp:floatVideos") === "1";
   });
   const [floatingVideoSize, setFloatingVideoSize] = useState<{ w: number; h: number } | null>(null);
+  const [floatingVideoPosition, setFloatingVideoPosition] = useState<{ x: number; y: number } | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = localStorage.getItem("aynfrp:floatVideoPos");
+      if (raw) {
+        const p = JSON.parse(raw) as { x: number; y: number };
+        if (typeof p.x === "number" && typeof p.y === "number") return p;
+      }
+    } catch (_) {}
+    return null;
+  });
 
   const queryParticipantId = search.get("pid");
   const participantId = queryParticipantId ?? storedParticipantId;
@@ -1861,6 +1872,204 @@ export default function RoomPage() {
                       : "Not connected to voice yet."}
                   </span>
                 </div>
+                {callError ? (
+                  <p className="mt-3 text-xs text-amber-600">{callError}</p>
+                ) : null}
+                {callJoined ? (
+                  <>
+                    <div className="mt-4 flex items-center gap-2">
+                      <label className="flex items-center gap-2 text-xs">
+                        <input
+                          type="checkbox"
+                          checked={floatVideos}
+                          onChange={(e) => {
+                            const v = e.target.checked;
+                            setFloatVideos(v);
+                            localStorage.setItem("aynfrp:floatVideos", v ? "1" : "0");
+                          }}
+                        />
+                        <span>Float videos</span>
+                      </label>
+                      {callFrameReady ? (
+                        <span className="rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-semibold text-emerald-700">
+                          Connected
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-amber-100 px-3 py-1 text-[11px] font-semibold text-amber-700">
+                          Connecting...
+                        </span>
+                      )}
+                    </div>
+                    <div
+                      className={`mt-4 rounded-xl border border-zinc-200 overflow-hidden ${
+                        floatVideos ? "fixed z-50 shadow-xl floating-video-panel" : ""
+                      }`}
+                      style={
+                        floatVideos
+                          ? {
+                              width: floatingVideoSize?.w ?? 420,
+                              height: floatingVideoSize?.h ?? 280,
+                              minWidth: 280,
+                              minHeight: 200,
+                              left:
+                                floatingVideoPosition?.x ??
+                                (typeof window !== "undefined"
+                                  ? Math.max(16, window.innerWidth - (floatingVideoSize?.w ?? 420) - 16)
+                                  : 16),
+                              top: floatingVideoPosition?.y ?? 96,
+                            }
+                          : undefined
+                      }
+                    >
+                      {floatVideos && (
+                        <div
+                          className="absolute left-0 right-0 top-0 z-20 h-7 cursor-grab active:cursor-grabbing flex items-center justify-center border-b border-zinc-200/80 bg-zinc-100/90 hover:bg-zinc-200/80 transition-colors rounded-t-xl"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            const startX = e.clientX;
+                            const startY = e.clientY;
+                            const startLeft = floatingVideoPosition?.x ?? Math.max(16, window.innerWidth - (floatingVideoSize?.w ?? 420) - 16);
+                            const startTop = floatingVideoPosition?.y ?? 96;
+                            const lastPos = { x: startLeft, y: startTop };
+                            const onMove = (e2: MouseEvent) => {
+                              const dx = e2.clientX - startX;
+                              const dy = e2.clientY - startY;
+                              const w = floatingVideoSize?.w ?? 420;
+                              const newX = Math.max(0, Math.min(window.innerWidth - w, startLeft + dx));
+                              const newY = Math.max(0, Math.min(window.innerHeight - 48, startTop + dy));
+                              lastPos.x = newX;
+                              lastPos.y = newY;
+                              setFloatingVideoPosition({ x: newX, y: newY });
+                            };
+                            const onUp = () => {
+                              document.removeEventListener("mousemove", onMove);
+                              document.removeEventListener("mouseup", onUp);
+                              try {
+                                localStorage.setItem("aynfrp:floatVideoPos", JSON.stringify(lastPos));
+                              } catch (_) {}
+                            };
+                            document.addEventListener("mousemove", onMove);
+                            document.addEventListener("mouseup", onUp);
+                          }}
+                          title="Drag to move"
+                        >
+                          <span className="text-[10px] font-medium text-zinc-500 select-none">⋮⋮</span>
+                        </div>
+                      )}
+                      {floatVideos && (
+                        <div
+                          className="absolute left-0 top-7 z-10 h-[calc(100%-1.75rem)] w-2 cursor-ew-resize bg-zinc-300/50 opacity-0 transition-opacity hover:opacity-100"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            const startX = e.clientX;
+                            const startW = floatingVideoSize?.w ?? 420;
+                            const onMove = (e2: MouseEvent) => {
+                              const dx = startX - e2.clientX;
+                              const newW = Math.max(280, Math.min(window.innerWidth - 32, startW + dx));
+                              setFloatingVideoSize((s) => ({ ...s, w: newW, h: s?.h ?? 280 }));
+                            };
+                            const onUp = () => {
+                              document.removeEventListener("mousemove", onMove);
+                              document.removeEventListener("mouseup", onUp);
+                            };
+                            document.addEventListener("mousemove", onMove);
+                            document.addEventListener("mouseup", onUp);
+                          }}
+                          title="Drag to resize"
+                        />
+                      )}
+                      {floatVideos && (
+                        <div
+                          className="absolute bottom-0 left-0 right-0 z-10 h-2 cursor-ns-resize bg-zinc-300/50 opacity-0 transition-opacity hover:opacity-100"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            const startY = e.clientY;
+                            const startH = floatingVideoSize?.h ?? 280;
+                            const onMove = (e2: MouseEvent) => {
+                              const dy = e2.clientY - startY;
+                              const newH = Math.max(200, Math.min(window.innerHeight - 100, startH + dy));
+                              setFloatingVideoSize((s) => ({ ...s, w: s?.w ?? 420, h: newH }));
+                            };
+                            const onUp = () => {
+                              document.removeEventListener("mousemove", onMove);
+                              document.removeEventListener("mouseup", onUp);
+                            };
+                            document.addEventListener("mousemove", onMove);
+                            document.addEventListener("mouseup", onUp);
+                          }}
+                          title="Drag to resize height"
+                        />
+                      )}
+                      {callToken ? (
+                        <div className={`w-full h-full bg-zinc-100 ${floatVideos ? "pt-7" : ""} ${!floatVideos ? "h-[70vh] min-h-[520px]" : ""}`} style={floatVideos ? { minHeight: 200 } : undefined}>
+                          <LiveKitRoom
+                            token={callToken}
+                            serverUrl={LIVEKIT_URL}
+                            connect
+                            video
+                            audio
+                            data-lk-theme="default"
+                            options={{ adaptiveStream: true, dynacast: true }}
+                            className="call-room h-full w-full"
+                            onConnected={() => setCallFrameReady(true)}
+                            onDisconnected={() => void handleQuitCall()}
+                            onError={(liveKitError) => setCallError(liveKitError.message)}
+                          >
+                            <VoiceRuntimeControls
+                              mode={audioMode}
+                              pttKeyCode={pttKeyCode}
+                              noiseThreshold={noiseThreshold}
+                            />
+                            {floatVideos ? <FloatingVideoConference /> : <VideoConference />}
+                          </LiveKitRoom>
+                        </div>
+                      ) : (
+                        <div className={`flex items-center justify-center text-sm text-zinc-500 ${floatVideos ? "min-h-[200px]" : "h-[70vh] min-h-[520px]"}`}>
+                          Connecting to room {callRoomName}...
+                        </div>
+                      )}
+                    </div>
+                    <div className="mt-4">
+                      <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500">
+                        In call now
+                      </h3>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                        {callParticipants.length === 0 ? (
+                          <p className="text-xs text-zinc-500">No one has joined the call yet.</p>
+                        ) : (
+                          callParticipants.map((person) => (
+                            <div
+                              key={person.id}
+                              className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2"
+                            >
+                              {person.camOn ? (
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-xs font-semibold text-white">
+                                  Video
+                                </div>
+                              ) : (
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-xs font-semibold text-zinc-700">
+                                  {person.name
+                                    .split(" ")
+                                    .map((chunk) => chunk[0])
+                                    .join("")
+                                    .slice(0, 2)
+                                    .toUpperCase()}
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <p className="truncate text-xs font-semibold">{person.name}</p>
+                                <p className="text-[11px] text-zinc-500">
+                                  {person.camOn ? "Camera on" : "Camera off"} •{" "}
+                                  {person.micOn ? "Mic on" : "Mic off"}
+                                </p>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </>
+                ) : null}
               </div>
             )}
           </div>
@@ -1868,192 +2077,6 @@ export default function RoomPage() {
 
         <section className="grid gap-6 lg:grid-cols-1">
           <div className="space-y-6 min-w-0">
-            <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <h2 className="text-lg font-semibold">Session controls</h2>
-                {/* Start/End session: marks room as active/ended, records timestamps for admin metrics. Hidden for now. */}
-              </div>
-              <div className="mt-4 flex flex-wrap items-center gap-3">
-                {callJoined ? (
-                  <button
-                    className="rounded-full bg-rose-600 px-4 py-2 text-xs font-semibold text-white"
-                    onClick={handleQuitCall}
-                  >
-                    Quit call
-                  </button>
-                ) : (
-                  <button
-                    className="rounded-full border border-zinc-200 px-4 py-2 text-xs font-semibold"
-                    onClick={handleJoinCall}
-                  >
-                    Join call
-                  </button>
-                )}
-                <span className="text-xs text-zinc-500">
-                  {callJoined
-                    ? `Use call controls inside the video window (${activeVoiceChannel?.name ?? "voice"}).`
-                    : "Join to open live call."}
-                </span>
-                {callJoined ? (
-                  <span
-                    className={`rounded-full px-3 py-1 text-[11px] font-semibold ${
-                      callFrameReady ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-                    }`}
-                  >
-                    {callFrameReady ? "Connected to video room" : "Connecting to video..."}
-                  </span>
-                ) : null}
-              </div>
-              {callError ? (
-                <p className="mt-3 text-xs text-amber-600">{callError}</p>
-              ) : null}
-              {callJoined ? (
-                <>
-                  <div className="mt-2 flex items-center gap-2">
-                    <label className="flex items-center gap-2 text-xs">
-                      <input
-                        type="checkbox"
-                        checked={floatVideos}
-                        onChange={(e) => {
-                          const v = e.target.checked;
-                          setFloatVideos(v);
-                          localStorage.setItem("aynfrp:floatVideos", v ? "1" : "0");
-                        }}
-                      />
-                      <span>Float videos on right</span>
-                    </label>
-                  </div>
-                  <div
-                    className={`mt-4 rounded-xl border border-zinc-200 overflow-hidden ${
-                      floatVideos ? "fixed right-4 top-24 z-50 shadow-xl floating-video-panel" : ""
-                    }`}
-                    style={
-                      floatVideos
-                        ? {
-                            width: floatingVideoSize?.w ?? 420,
-                            height: floatingVideoSize?.h ?? 280,
-                            minWidth: 280,
-                            minHeight: 200,
-                          }
-                        : undefined
-                    }
-                  >
-                    {floatVideos && (
-                      <div
-                        className="absolute left-0 top-0 z-10 h-full w-2 cursor-ew-resize bg-zinc-300/50 opacity-0 transition-opacity hover:opacity-100"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          const startX = e.clientX;
-                          const startW = floatingVideoSize?.w ?? 420;
-                          const onMove = (e2: MouseEvent) => {
-                            const dx = startX - e2.clientX;
-                            const newW = Math.max(280, Math.min(window.innerWidth - 32, startW + dx));
-                            setFloatingVideoSize((s) => ({ ...s, w: newW, h: s?.h ?? 280 }));
-                          };
-                          const onUp = () => {
-                            document.removeEventListener("mousemove", onMove);
-                            document.removeEventListener("mouseup", onUp);
-                          };
-                          document.addEventListener("mousemove", onMove);
-                          document.addEventListener("mouseup", onUp);
-                        }}
-                        title="Drag to resize"
-                      />
-                    )}
-                    {floatVideos && (
-                      <div
-                        className="absolute bottom-0 left-0 right-0 z-10 h-2 cursor-ns-resize bg-zinc-300/50 opacity-0 transition-opacity hover:opacity-100"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          const startY = e.clientY;
-                          const startH = floatingVideoSize?.h ?? 280;
-                          const onMove = (e2: MouseEvent) => {
-                            const dy = e2.clientY - startY;
-                            const newH = Math.max(200, Math.min(window.innerHeight - 100, startH + dy));
-                            setFloatingVideoSize((s) => ({ ...s, w: s?.w ?? 420, h: newH }));
-                          };
-                          const onUp = () => {
-                            document.removeEventListener("mousemove", onMove);
-                            document.removeEventListener("mouseup", onUp);
-                          };
-                          document.addEventListener("mousemove", onMove);
-                          document.addEventListener("mouseup", onUp);
-                        }}
-                        title="Drag to resize height"
-                      />
-                    )}
-                    {callToken ? (
-                      <div className={`w-full h-full bg-zinc-100 ${floatVideos ? "" : "h-[70vh] min-h-[520px]"}`} style={floatVideos ? { minHeight: 200 } : undefined}>
-                        <LiveKitRoom
-                        token={callToken}
-                        serverUrl={LIVEKIT_URL}
-                        connect
-                        video
-                        audio
-                        data-lk-theme="default"
-                        options={{ adaptiveStream: true, dynacast: true }}
-                        className="call-room h-full w-full"
-                        onConnected={() => setCallFrameReady(true)}
-                        onDisconnected={() => void handleQuitCall()}
-                        onError={(liveKitError) => setCallError(liveKitError.message)}
-                      >
-                        <VoiceRuntimeControls
-                          mode={audioMode}
-                          pttKeyCode={pttKeyCode}
-                          noiseThreshold={noiseThreshold}
-                        />
-                        {floatVideos ? <FloatingVideoConference /> : <VideoConference />}
-                      </LiveKitRoom>
-                    </div>
-                      ) : (
-                        <div className={`flex items-center justify-center text-sm text-zinc-500 ${floatVideos ? "min-h-[200px]" : "h-[70vh] min-h-[520px]"}`}>
-                          Connecting to room {callRoomName}...
-                        </div>
-                      )}
-                  </div>
-                </>
-              ) : null}
-              <div className="mt-4">
-                <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500">
-                  In call now
-                </h3>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {callParticipants.length === 0 ? (
-                    <p className="text-xs text-zinc-500">No one has joined the call yet.</p>
-                  ) : (
-                    callParticipants.map((person) => (
-                        <div
-                          key={person.id}
-                          className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2"
-                        >
-                          {person.camOn ? (
-                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-zinc-900 text-xs font-semibold text-white">
-                              Video
-                            </div>
-                          ) : (
-                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-200 text-xs font-semibold text-zinc-700">
-                              {person.name
-                                .split(" ")
-                                .map((chunk) => chunk[0])
-                                .join("")
-                                .slice(0, 2)
-                                .toUpperCase()}
-                            </div>
-                          )}
-                          <div>
-                            <p className="text-xs font-semibold">{person.name}</p>
-                            <p className="text-[11px] text-zinc-500">
-                              {person.camOn ? "Camera on" : "Camera off"} •{" "}
-                              {person.micOn ? "Mic on" : "Mic off"}
-                            </p>
-                          </div>
-                        </div>
-                      ))
-                  )}
-                </div>
-              </div>
-            </div>
-
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <div className="min-w-0 rounded-2xl border-2 border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 p-6 shadow-md">
               <h2 className="text-lg font-bold text-amber-900">⚔ Initiative tracker</h2>
@@ -2234,13 +2257,15 @@ export default function RoomPage() {
                           </span>
                         </div>
                         <div className="flex shrink-0 items-center gap-1">
-                          <button
-                            className="rounded-lg p-1.5 text-base transition hover:scale-110 hover:bg-zinc-200/80"
-                            onClick={() => toggleInitiativeAlive(e.id)}
-                            title={isDead ? "Mark alive" : "Mark dead"}
-                          >
-                            {isDead ? <span title="Mark alive">❤️</span> : <span title="Mark dead">💀</span>}
-                          </button>
+                          {(canManageSession || e.participantId === participantId) ? (
+                            <button
+                              className="rounded-lg p-1.5 text-base transition hover:scale-110 hover:bg-zinc-200/80"
+                              onClick={() => toggleInitiativeAlive(e.id)}
+                              title={isDead ? "Mark alive" : "Mark dead"}
+                            >
+                              {isDead ? <span title="Mark alive">❤️</span> : <span title="Mark dead">💀</span>}
+                            </button>
+                          ) : null}
                           {canManageSession ? (
                             <button
                               className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 hover:bg-rose-100 hover:text-rose-600"
