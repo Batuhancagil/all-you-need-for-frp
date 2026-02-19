@@ -17,6 +17,7 @@ export async function GET(
       id: true,
       initiativeCurrentEntryId: true,
       initiativeTurnCount: true,
+      initiativeRoundCount: true,
     },
   });
   if (!room) return fail("room_not_found", "Room not found", 404);
@@ -42,6 +43,7 @@ export async function GET(
     })),
     currentTurnEntryId: room.initiativeCurrentEntryId,
     turnCount: room.initiativeTurnCount,
+    roundCount: room.initiativeRoundCount,
   });
 }
 
@@ -76,7 +78,7 @@ export async function POST(
     await prisma.initiativeEntry.deleteMany({ where: { roomId } });
     await prisma.room.update({
       where: { id: roomId },
-      data: { initiativeCurrentEntryId: null, initiativeTurnCount: 0 },
+      data: { initiativeCurrentEntryId: null, initiativeTurnCount: 0, initiativeRoundCount: 0 },
     });
     return ok({ started: true });
   }
@@ -115,7 +117,7 @@ export async function POST(
     const [roomState, entries] = await Promise.all([
       prisma.room.findUnique({
         where: { id: roomId },
-        select: { initiativeCurrentEntryId: true, initiativeTurnCount: true },
+        select: { initiativeCurrentEntryId: true, initiativeTurnCount: true, initiativeRoundCount: true },
       }),
       prisma.initiativeEntry.findMany({
         where: { roomId, isAlive: true },
@@ -137,24 +139,39 @@ export async function POST(
     }
     const nextEntry = entries[nextIndex];
     const turnCount = (roomState?.initiativeTurnCount ?? 0) + 1;
+    const wrappedToStart = nextIndex === 0 && currentIndex >= 0;
+    const roundCount = (roomState?.initiativeRoundCount ?? 0) + (wrappedToStart ? 1 : 0);
     await prisma.room.update({
       where: { id: roomId },
       data: {
         initiativeCurrentEntryId: nextEntry.id,
         initiativeTurnCount: turnCount,
+        initiativeRoundCount: roundCount,
       },
     });
-    return ok({ currentTurnEntryId: nextEntry.id, turnCount });
+    return ok({ currentTurnEntryId: nextEntry.id, turnCount, roundCount });
   }
 
   if (action === "setTurnCount") {
     if (!canManage) return fail("forbidden", "Only admin or GM can set turn count", 403);
     const count = typeof turnCount === "number" && Number.isFinite(turnCount) && turnCount >= 0 ? turnCount : 0;
+    const roundCountParam = body?.roundCount as number | undefined;
+    const roundCount =
+      typeof roundCountParam === "number" && Number.isFinite(roundCountParam) && roundCountParam >= 0
+        ? roundCountParam
+        : undefined;
     await prisma.room.update({
       where: { id: roomId },
-      data: { initiativeTurnCount: count },
+      data: {
+        initiativeTurnCount: count,
+        ...(roundCount !== undefined && { initiativeRoundCount: roundCount }),
+      },
     });
-    return ok({ turnCount: count });
+    const updated = await prisma.room.findUnique({
+      where: { id: roomId },
+      select: { initiativeRoundCount: true },
+    });
+    return ok({ turnCount: count, roundCount: updated?.initiativeRoundCount ?? 0 });
   }
 
   if (action === "add") {

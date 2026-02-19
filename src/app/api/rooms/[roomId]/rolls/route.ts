@@ -26,6 +26,7 @@ export async function GET(
       id: roll.id,
       participantId: roll.participantId,
       participantName: roll.participantName,
+      rollName: roll.rollName,
       sides: roll.sides,
       count: roll.count,
       expression: roll.expression,

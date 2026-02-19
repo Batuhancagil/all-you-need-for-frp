@@ -15,6 +15,7 @@ export async function POST(
   const body = await request.json().catch(() => null);
   const participantId = body?.participantId as string | undefined;
   const expression = body?.expression as string | undefined;
+  const rollName = body?.rollName as string | undefined;
   const sides = Number(body?.sides ?? 20);
   const count = Number(body?.count ?? 1);
 
@@ -61,6 +62,7 @@ export async function POST(
       roomId,
       participantId: participant.id,
       participantName: participant.name,
+      rollName: rollName?.trim() || null,
       sides: storedSides,
       count: storedCount,
       expression: storedExpression,
@@ -75,6 +77,7 @@ export async function POST(
       id: roll.id,
       participantId: roll.participantId,
       participantName: roll.participantName,
+      rollName: roll.rollName,
       sides: roll.sides,
       count: roll.count,
       expression: roll.expression,

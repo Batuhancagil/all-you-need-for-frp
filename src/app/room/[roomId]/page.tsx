@@ -28,6 +28,7 @@ type Participant = {
 type Roll = {
   id: string;
   participantName: string;
+  rollName?: string | null;
   sides: number;
   count: number;
   expression?: string | null;
@@ -59,6 +60,7 @@ type InitiativeEntry = {
 type InitiativeState = {
   currentTurnEntryId: string | null;
   turnCount: number;
+  roundCount: number;
 };
 
 /** Unified reveal data for dice overlay (main roll or initiative). */
@@ -67,6 +69,7 @@ type RollRevealData = {
   total: number;
   results: number[];
   participantName: string;
+  rollName?: string | null;
 };
 
 type ChatMessage = {
@@ -390,6 +393,7 @@ export default function RoomPage() {
   const [initiativeState, setInitiativeState] = useState<InitiativeState>({
     currentTurnEntryId: null,
     turnCount: 0,
+    roundCount: 0,
   });
   const [initiativeTurnCountInput, setInitiativeTurnCountInput] = useState("");
   const [initiativeCreatureName, setInitiativeCreatureName] = useState("");
@@ -507,6 +511,11 @@ export default function RoomPage() {
         sessionState: "waiting" | "active" | "ended";
       }>;
       if (payload.data) {
+        if (participantId && !payload.data.participants.some((p) => p.id === participantId)) {
+          localStorage.removeItem(`aynfrp:room:${roomId}:participant`);
+          router.replace("/");
+          return;
+        }
         setParticipants(payload.data.participants);
         setRoom((prev) => (prev ? { ...prev, sessionState: payload.data!.sessionState } : prev));
       }
@@ -543,12 +552,14 @@ export default function RoomPage() {
         entries: InitiativeEntry[];
         currentTurnEntryId: string | null;
         turnCount: number;
+        roundCount: number;
       }>;
       if (payload.data) {
         setInitiativeEntries(payload.data.entries);
         setInitiativeState({
           currentTurnEntryId: payload.data.currentTurnEntryId ?? null,
           turnCount: payload.data.turnCount ?? 0,
+          roundCount: payload.data.roundCount ?? 0,
         });
       }
     }
@@ -596,12 +607,14 @@ export default function RoomPage() {
         entries: InitiativeEntry[];
         currentTurnEntryId: string | null;
         turnCount: number;
+        roundCount: number;
       }>;
       if (initPayload.data) {
         setInitiativeEntries(initPayload.data.entries);
         setInitiativeState({
           currentTurnEntryId: initPayload.data.currentTurnEntryId ?? null,
           turnCount: initPayload.data.turnCount ?? 0,
+          roundCount: initPayload.data.roundCount ?? 0,
         });
       }
       if (participantId) {
@@ -764,7 +777,7 @@ export default function RoomPage() {
   const ROLL_TENSION_MS = 1200;
   const REVEAL_DISPLAY_MS = 1800;
 
-  async function rollDice(expressionOverride?: string) {
+  async function rollDice(expressionOverride?: string, rollNameOverride?: string) {
     setDiceError(null);
     if (!participantId) return;
     const expr = (expressionOverride ?? diceExpression).trim() || "d20";
@@ -774,7 +787,7 @@ export default function RoomPage() {
       const res = await fetch(`/api/rooms/${roomId}/roll`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ participantId, expression: expr }),
+        body: JSON.stringify({ participantId, expression: expr, rollName: rollNameOverride || undefined }),
       });
       const payload = (await res.json()) as ApiResponse<{ roll: Roll }>;
       if (payload.error) {
@@ -793,6 +806,7 @@ export default function RoomPage() {
             total: newRoll.total,
             results: newRoll.results,
             participantName: newRoll.participantName,
+            rollName: newRoll.rollName ?? null,
           },
         });
         setTimeout(() => {
@@ -853,7 +867,7 @@ export default function RoomPage() {
       setInitiativeError(payload.error.message);
     } else {
       setInitiativeEntries([]);
-      setInitiativeState({ currentTurnEntryId: null, turnCount: 0 });
+      setInitiativeState({ currentTurnEntryId: null, turnCount: 0, roundCount: 0 });
     }
   }
 
@@ -875,12 +889,14 @@ export default function RoomPage() {
           entries: InitiativeEntry[];
           currentTurnEntryId: string | null;
           turnCount: number;
+          roundCount: number;
         }>;
         if (initPayload.data) {
           setInitiativeEntries(initPayload.data.entries);
           setInitiativeState({
             currentTurnEntryId: initPayload.data.currentTurnEntryId ?? null,
             turnCount: initPayload.data.turnCount ?? 0,
+            roundCount: initPayload.data.roundCount ?? 0,
           });
         }
       })();
@@ -918,6 +934,7 @@ export default function RoomPage() {
     const payload = (await res.json()) as ApiResponse<{
       currentTurnEntryId?: string;
       turnCount?: number;
+      roundCount?: number;
     }>;
     if (payload.error) {
       setInitiativeError(payload.error.message);
@@ -925,6 +942,7 @@ export default function RoomPage() {
       setInitiativeState({
         currentTurnEntryId: payload.data.currentTurnEntryId ?? null,
         turnCount: payload.data.turnCount ?? 0,
+        roundCount: payload.data.roundCount ?? 0,
       });
     }
   }
@@ -937,14 +955,16 @@ export default function RoomPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ participantId, action: "setTurnCount", turnCount: count }),
     });
-    const payload = (await res.json()) as ApiResponse<{ turnCount?: number }>;
+    const payload = (await res.json()) as ApiResponse<{ turnCount?: number; roundCount?: number }>;
     if (payload.error) {
       setInitiativeError(payload.error.message);
-    } else {
-      const newCount = payload.data?.turnCount;
-      if (typeof newCount === "number") {
-        setInitiativeState((prev) => ({ ...prev, turnCount: newCount }));
-      }
+    } else if (payload.data) {
+      const { turnCount: newCount, roundCount: newRound } = payload.data;
+      setInitiativeState((prev) => ({
+        ...prev,
+        ...(typeof newCount === "number" && { turnCount: newCount }),
+        ...(typeof newRound === "number" && { roundCount: newRound }),
+      }));
     }
   }
 
@@ -1326,30 +1346,11 @@ export default function RoomPage() {
                 const termSides = parseExpressionSides(data.expression);
                 const isNat20 = data.results.some((r, i) => (termSides[i] ?? 20) === 20 && r === 20);
                 const isNat1 = data.results.some((r, i) => (termSides[i] ?? 20) === 20 && r === 1);
+                const label = data.rollName
+                  ? `${data.participantName} · ${data.rollName}`
+                  : data.participantName;
                 return (
-                  <>
-                    <p className="mb-2 text-xs font-medium text-amber-800">{data.participantName}</p>
-                    <div
-                      className={`mb-4 flex justify-center ${
-                        isNat20
-                          ? "animate-crit-glow rounded-2xl px-6 py-2"
-                          : isNat1
-                            ? ""
-                            : ""
-                      }`}
-                    >
-                      <span
-                        className={`font-bold tabular-nums ${
-                          isNat20
-                            ? "text-4xl text-amber-600"
-                            : isNat1
-                              ? "text-4xl text-rose-600 animate-fumble-shake"
-                              : "text-4xl text-zinc-800"
-                        }`}
-                      >
-                        {data.total}
-                      </span>
-                    </div>
+                  <div className="flex flex-col items-center">
                     <div className="flex flex-wrap justify-center gap-2">
                       {termSides.map((sides, i) => (
                         <TumblingDie
@@ -1361,12 +1362,30 @@ export default function RoomPage() {
                         />
                       ))}
                     </div>
+                    <div
+                      className={`mt-4 flex flex-col items-center ${
+                        isNat20 ? "animate-crit-glow rounded-2xl px-8 py-3" : ""
+                      }`}
+                    >
+                      <span
+                        className={`font-bold tabular-nums ${
+                          isNat20
+                            ? "text-5xl text-amber-600"
+                            : isNat1
+                              ? "text-5xl text-rose-600 animate-fumble-shake"
+                              : "text-5xl text-zinc-800"
+                        }`}
+                      >
+                        {data.total}
+                      </span>
+                      <p className="mt-2 text-sm font-medium text-amber-800/90">{label}</p>
+                    </div>
                     {isNat20 ? (
-                      <p className="mt-6 text-lg font-bold text-amber-600">★ Critical! ★</p>
+                      <p className="mt-4 text-lg font-bold text-amber-600">★ Critical! ★</p>
                     ) : isNat1 ? (
-                      <p className="mt-6 text-lg font-bold text-rose-600">… Fumble …</p>
+                      <p className="mt-4 text-lg font-bold text-rose-600">… Fumble …</p>
                     ) : null}
-                  </>
+                  </div>
                 );
               })()
             )}
@@ -1566,22 +1585,43 @@ export default function RoomPage() {
                   {rolls.length === 0 ? (
                     <p className="text-xs text-zinc-500">No rolls yet.</p>
                   ) : (
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                       {rolls.map((roll) => {
                         const termSides = getTermSides(roll);
+                        const hasNat20 = termSides.some((s, i) => s === 20 && (roll.results[i] ?? 0) === 20);
+                        const hasNat1 = termSides.some((s, i) => s === 20 && (roll.results[i] ?? 0) === 1);
                         return (
-                          <div key={roll.id} className="rounded-lg border border-zinc-200 bg-white px-3 py-2">
-                            <p className="text-xs font-semibold">{roll.participantName}</p>
-                            <p className="text-xl font-bold tabular-nums text-zinc-800">{roll.total}</p>
-                            <p className="mt-1 flex flex-wrap gap-1">
-                              {termSides.map((sides, i) => (
-                                <span
-                                  key={i}
-                                  className={`inline-flex h-7 w-7 items-center justify-center rounded text-sm font-bold ${diceColor(roll.results[i] ?? 0, sides)}`}
-                                >
-                                  {roll.results[i]}
-                                </span>
-                              ))}
+                          <div
+                            key={roll.id}
+                            className={`rounded-xl border-2 bg-gradient-to-br from-white to-amber-50/30 p-4 shadow-sm transition hover:shadow-md ${
+                              hasNat20 ? "border-amber-300 shadow-amber-100/50" : hasNat1 ? "border-rose-200" : "border-amber-200/60"
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex flex-wrap gap-2">
+                                {termSides.map((sides, i) => (
+                                  <span
+                                    key={i}
+                                    className={`inline-flex h-9 w-9 items-center justify-center rounded-lg text-base font-bold shadow-sm ${diceColor(roll.results[i] ?? 0, sides)}`}
+                                  >
+                                    {roll.results[i]}
+                                  </span>
+                                ))}
+                              </div>
+                              <span className="text-2xl font-bold tabular-nums text-zinc-800">
+                                {roll.total}
+                              </span>
+                            </div>
+                            <p className="mt-2 text-xs font-medium text-zinc-600">
+                              {roll.rollName ? (
+                                <>
+                                  <span className="text-amber-700">{roll.rollName}</span>
+                                  <span className="mx-1.5">·</span>
+                                  {roll.participantName}
+                                </>
+                              ) : (
+                                roll.participantName
+                              )}
                             </p>
                           </div>
                         );
@@ -1847,9 +1887,9 @@ export default function RoomPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-              <h2 className="text-lg font-semibold">Initiative</h2>
-              <p className="text-xs text-zinc-500">GM starts; GM rolls for creatures; players roll for themselves.</p>
+            <div className="rounded-2xl border-2 border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 p-6 shadow-md">
+              <h2 className="text-lg font-bold text-amber-900">⚔ Initiative tracker</h2>
+              <p className="text-xs text-amber-700/80">Roll to see who strikes first. GM rolls for monsters, you roll for you.</p>
               {canManageSession ? (
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <button
@@ -1895,8 +1935,11 @@ export default function RoomPage() {
               {initiativeEntries.length > 0 ? (
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-zinc-600">
-                      Turn {initiativeState.turnCount} • {initiativeState.currentTurnEntryId ? "Active" : "—"}
+                    <span className="flex items-center gap-1.5 text-sm font-bold text-amber-900">
+                      {initiativeState.currentTurnEntryId ? (
+                        <span className="rounded-full bg-amber-400/80 px-1.5 text-amber-900" title="Current turn">⚔</span>
+                      ) : null}
+                      Round {initiativeState.roundCount + 1} · Turn {initiativeState.turnCount}
                     </span>
                     {canManageSession ? (
                       <span className="flex items-center gap-1">
@@ -1961,34 +2004,46 @@ export default function RoomPage() {
                     const isCreature = !!e.creatureName;
                     const displayName = e.creatureName ?? e.participantName ?? "—";
                     const isDead = e.isAlive === false;
+                    const isCrit = e.result === 20;
+                    const isFumble = e.result === 1;
                     return (
                       <div
                         key={e.id}
-                        className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm ${
-                          isCurrentTurn ? "border-amber-400 bg-amber-50" : "border-zinc-200 bg-zinc-50"
-                        } ${isDead ? "opacity-60" : ""}`}
+                        className={`flex items-center justify-between gap-2 rounded-xl border-2 px-3 py-2.5 text-sm transition-all ${
+                          isCurrentTurn
+                            ? "border-amber-500 bg-gradient-to-r from-amber-100 to-yellow-100 shadow-md ring-2 ring-amber-300/50"
+                            : "border-amber-200/80 bg-white/80"
+                        } ${isDead ? "opacity-55 grayscale-[0.3]" : ""}`}
                       >
-                        <div className="flex min-w-0 flex-1 items-center gap-2">
-                          <span className="shrink-0 font-semibold">
-                            {i + 1}. {displayName}
+                        <div className="flex min-w-0 flex-1 items-center gap-3">
+                          <span className="flex shrink-0 items-center gap-1 font-bold text-amber-900">
+                            {i + 1}.
+                            {isCurrentTurn ? (
+                              <span className="rounded bg-amber-400 p-0.5 text-amber-900" title="Your turn!">⚔</span>
+                            ) : null}
+                            {displayName}
                           </span>
-                          <span className="text-xs text-zinc-600">
-                            {e.expression} → {e.result}
+                          <span
+                            className={`inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-0.5 font-mono text-sm font-bold ${
+                              isCrit
+                                ? "bg-amber-200/90 text-amber-900"
+                                : isFumble
+                                  ? "bg-rose-200/90 text-rose-900"
+                                  : "bg-zinc-200/90 text-zinc-800"
+                            }`}
+                            title={`${e.expression} = ${e.result}`}
+                          >
+                            <span className="text-[10px] opacity-75">{e.expression}</span>
+                            <span className="tabular-nums">{e.result}</span>
                           </span>
-                          {isCurrentTurn ? (
-                            <span className="text-[10px] font-bold uppercase text-amber-600">• Current</span>
-                          ) : null}
-                          {isDead ? (
-                            <span className="text-[10px] font-medium text-rose-600">Dead</span>
-                          ) : null}
                         </div>
                         <div className="flex shrink-0 items-center gap-1">
                           <button
-                            className="rounded px-2 py-1 text-[10px] font-medium text-zinc-600 hover:bg-zinc-200"
+                            className="rounded-lg p-1.5 text-base transition hover:scale-110 hover:bg-zinc-200/80"
                             onClick={() => toggleInitiativeAlive(e.id)}
                             title={isDead ? "Mark alive" : "Mark dead"}
                           >
-                            {isDead ? "Alive" : "Dead"}
+                            {isDead ? <span title="Mark alive">❤️</span> : <span title="Mark dead">💀</span>}
                           </button>
                           {canManageSession && isCreature ? (
                             <button
@@ -2100,7 +2155,7 @@ export default function RoomPage() {
                         <button
                           key={name}
                           className="group flex items-center gap-2 rounded-xl border-2 border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm font-medium transition hover:border-amber-300 hover:bg-amber-50"
-                          onClick={() => { setDiceExpression(expr); rollDice(expr); }}
+                          onClick={() => { setDiceExpression(expr); rollDice(expr, name); }}
                           title={`${name}: ${expr} — click to roll`}
                         >
                           <span className="text-zinc-800">{name}</span>
@@ -2143,27 +2198,46 @@ export default function RoomPage() {
               <p className="mt-3 text-[11px] text-zinc-500">
                 Roll again if wrong — previous stays visible. Full history in 🎲 dice channel.
               </p>
-              <div className="mt-3 space-y-2 max-h-40 overflow-y-auto">
+              <div className="mt-3 space-y-3 max-h-48 overflow-y-auto">
                 {rolls.length === 0 ? (
                   <p className="text-xs text-zinc-500">No rolls yet.</p>
                 ) : (
                   rolls.slice(0, 8).map((roll) => {
                     const termSides = getTermSides(roll);
+                    const hasNat20 = termSides.some((s, i) => s === 20 && (roll.results[i] ?? 0) === 20);
+                    const hasNat1 = termSides.some((s, i) => s === 20 && (roll.results[i] ?? 0) === 1);
                     return (
-                      <div key={roll.id} className="rounded-lg border border-zinc-200 px-3 py-2">
-                        <p className="text-xs font-semibold">{roll.participantName}</p>
-                        <p className="text-sm font-semibold tabular-nums text-zinc-800">
-                          {roll.total}
-                        </p>
-                        <p className="mt-1 flex flex-wrap gap-1">
-                          {termSides.map((sides, i) => (
-                            <span
-                              key={i}
-                              className={`inline-flex h-6 w-6 items-center justify-center rounded text-xs font-bold ${diceColor(roll.results[i] ?? 0, sides)}`}
-                            >
-                              {roll.results[i]}
-                            </span>
-                          ))}
+                      <div
+                        key={roll.id}
+                        className={`rounded-xl border-2 bg-gradient-to-br from-white to-amber-50/30 p-4 shadow-sm transition hover:shadow-md ${
+                          hasNat20 ? "border-amber-300 shadow-amber-100/50" : hasNat1 ? "border-rose-200" : "border-amber-200/60"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex flex-wrap gap-1.5">
+                            {termSides.map((sides, i) => (
+                              <span
+                                key={i}
+                                className={`inline-flex h-7 w-7 items-center justify-center rounded-lg text-sm font-bold shadow-sm ${diceColor(roll.results[i] ?? 0, sides)}`}
+                              >
+                                {roll.results[i]}
+                              </span>
+                            ))}
+                          </div>
+                          <span className="text-xl font-bold tabular-nums text-zinc-800">
+                            {roll.total}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-[11px] font-medium text-zinc-600">
+                          {roll.rollName ? (
+                            <>
+                              <span className="text-amber-700">{roll.rollName}</span>
+                              <span className="mx-1">·</span>
+                              {roll.participantName}
+                            </>
+                          ) : (
+                            roll.participantName
+                          )}
                         </p>
                       </div>
                     );

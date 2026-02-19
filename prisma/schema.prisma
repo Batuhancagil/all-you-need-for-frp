@@ -102,6 +102,7 @@ model Room {
   initiativeCurrentEntryId String?  @unique
   initiativeCurrentEntry   InitiativeEntry? @relation("InitiativeCurrentTurn", fields: [initiativeCurrentEntryId], references: [id], onDelete: SetNull)
   initiativeTurnCount      Int      @default(0)
+  initiativeRoundCount     Int      @default(0)
 
   participants       Participant[]
   rolls              Roll[]
@@ -135,6 +136,7 @@ model Roll {
   roomId           String
   participantId    String
   participantName  String
+  rollName         String?
   sides            Int      @default(20)
   count            Int      @default(1)
   expression       String?
