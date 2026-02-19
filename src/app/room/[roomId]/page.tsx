@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { LiveKitRoom, VideoConference, useLocalParticipant } from "@livekit/components-react";
 import { FloatingVideoConference } from "@/components/FloatingVideoConference";
+import { MusicPlayer } from "@/components/MusicPlayer";
 import "@livekit/components-styles";
 import { Track } from "livekit-client";
 import { buildVideoChannelRoomName, buildVideoRoomName } from "@/lib/video-room";
@@ -431,6 +432,7 @@ export default function RoomPage() {
     if (typeof window === "undefined") return false;
     return localStorage.getItem("aynfrp:floatVideos") === "1";
   });
+  const [floatingVideoSize, setFloatingVideoSize] = useState<{ w: number; h: number } | null>(null);
 
   const queryParticipantId = search.get("pid");
   const participantId = queryParticipantId ?? storedParticipantId;
@@ -1922,12 +1924,66 @@ export default function RoomPage() {
                     </label>
                   </div>
                   <div
-                    className={`mt-4 rounded-xl border border-zinc-200 ${
-                      floatVideos ? "fixed right-4 top-24 z-50 w-[min(420px,calc(100vw-2rem))] shadow-xl" : ""
+                    className={`mt-4 rounded-xl border border-zinc-200 overflow-hidden ${
+                      floatVideos ? "fixed right-4 top-24 z-50 shadow-xl floating-video-panel" : ""
                     }`}
+                    style={
+                      floatVideos
+                        ? {
+                            width: floatingVideoSize?.w ?? 420,
+                            height: floatingVideoSize?.h ?? 280,
+                            minWidth: 280,
+                            minHeight: 200,
+                          }
+                        : undefined
+                    }
                   >
+                    {floatVideos && (
+                      <div
+                        className="absolute left-0 top-0 z-10 h-full w-2 cursor-ew-resize bg-zinc-300/50 opacity-0 transition-opacity hover:opacity-100"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          const startX = e.clientX;
+                          const startW = floatingVideoSize?.w ?? 420;
+                          const onMove = (e2: MouseEvent) => {
+                            const dx = startX - e2.clientX;
+                            const newW = Math.max(280, Math.min(window.innerWidth - 32, startW + dx));
+                            setFloatingVideoSize((s) => ({ ...s, w: newW, h: s?.h ?? 280 }));
+                          };
+                          const onUp = () => {
+                            document.removeEventListener("mousemove", onMove);
+                            document.removeEventListener("mouseup", onUp);
+                          };
+                          document.addEventListener("mousemove", onMove);
+                          document.addEventListener("mouseup", onUp);
+                        }}
+                        title="Drag to resize"
+                      />
+                    )}
+                    {floatVideos && (
+                      <div
+                        className="absolute bottom-0 left-0 right-0 z-10 h-2 cursor-ns-resize bg-zinc-300/50 opacity-0 transition-opacity hover:opacity-100"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          const startY = e.clientY;
+                          const startH = floatingVideoSize?.h ?? 280;
+                          const onMove = (e2: MouseEvent) => {
+                            const dy = e2.clientY - startY;
+                            const newH = Math.max(200, Math.min(window.innerHeight - 100, startH + dy));
+                            setFloatingVideoSize((s) => ({ ...s, w: s?.w ?? 420, h: newH }));
+                          };
+                          const onUp = () => {
+                            document.removeEventListener("mousemove", onMove);
+                            document.removeEventListener("mouseup", onUp);
+                          };
+                          document.addEventListener("mousemove", onMove);
+                          document.addEventListener("mouseup", onUp);
+                        }}
+                        title="Drag to resize height"
+                      />
+                    )}
                     {callToken ? (
-                      <div className={`w-full bg-zinc-100 ${floatVideos ? "aspect-video min-h-[280px]" : "h-[70vh] min-h-[520px]"}`}>
+                      <div className={`w-full h-full bg-zinc-100 ${floatVideos ? "" : "h-[70vh] min-h-[520px]"}`} style={floatVideos ? { minHeight: 200 } : undefined}>
                         <LiveKitRoom
                         token={callToken}
                         serverUrl={LIVEKIT_URL}
@@ -1938,7 +1994,7 @@ export default function RoomPage() {
                         options={{ adaptiveStream: true, dynacast: true }}
                         className="call-room h-full w-full"
                         onConnected={() => setCallFrameReady(true)}
-                        onDisconnected={() => setCallFrameReady(false)}
+                        onDisconnected={() => void handleQuitCall()}
                         onError={(liveKitError) => setCallError(liveKitError.message)}
                       >
                         <VoiceRuntimeControls
@@ -2389,56 +2445,6 @@ export default function RoomPage() {
             </div>
             </div>
 
-            {canManageSession ? (
-              <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-                <h2 className="text-lg font-semibold">Background music</h2>
-                <p className="text-xs text-zinc-500">YouTube URL (admin/GM only)</p>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <input
-                    className="min-w-[200px] flex-1 rounded-lg border border-zinc-200 px-3 py-2 text-sm"
-                    value={musicUrl}
-                    onChange={(e) => setMusicUrl(e.target.value)}
-                    placeholder="https://youtube.com/watch?v=..."
-                  />
-                  <button
-                    className="rounded-full bg-zinc-900 px-4 py-2 text-xs font-semibold text-white"
-                    onClick={() => void setBackgroundMusic()}
-                  >
-                    Set
-                  </button>
-                  <button
-                    className="rounded-full border border-zinc-200 px-4 py-2 text-xs font-semibold"
-                    onClick={() => { setMusicUrl(""); void setBackgroundMusic(""); }}
-                  >
-                    Clear
-                  </button>
-                </div>
-                {musicError ? <p className="mt-2 text-xs text-amber-600">{musicError}</p> : null}
-                {room?.backgroundMusicUrl ? (
-                  <div className="mt-3 aspect-video max-w-md overflow-hidden rounded-lg">
-                    <iframe
-                      className="h-full w-full"
-                      src={room.backgroundMusicUrl}
-                      title="Background music"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    />
-                  </div>
-                ) : null}
-              </div>
-            ) : room?.backgroundMusicUrl ? (
-              <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-                <h2 className="text-lg font-semibold">Background music</h2>
-                <div className="mt-3 aspect-video max-w-md overflow-hidden rounded-lg">
-                  <iframe
-                    className="h-full w-full"
-                    src={room.backgroundMusicUrl}
-                    title="Background music"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  />
-                </div>
-              </div>
-            ) : null}
-
             <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold">Recap</h2>
               <p className="text-sm text-zinc-500">Capture a short recap after the session.</p>
@@ -2464,6 +2470,15 @@ export default function RoomPage() {
 
         </section>
       </main>
+
+      <MusicPlayer
+        backgroundMusicUrl={room?.backgroundMusicUrl ?? null}
+        musicUrl={musicUrl}
+        setMusicUrl={setMusicUrl}
+        setBackgroundMusic={setBackgroundMusic}
+        musicError={musicError}
+        canManageSession={canManageSession}
+      />
     </div>
     </>
   );

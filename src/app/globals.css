@@ -33,6 +33,15 @@ body {
   transform: none !important;
 }
 
+/* Floating video: hide controls until hover over the video panel */
+.floating-video-panel .lk-control-bar {
+  opacity: 0 !important;
+  transition: opacity 0.2s ease;
+}
+.floating-video-panel:hover .lk-control-bar {
+  opacity: 1 !important;
+}
+
 .call-room .lk-video-conference {
   height: 100%;
 }
