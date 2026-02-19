@@ -128,6 +128,17 @@ function getTermSides(roll: Roll): number[] {
   return Array(roll.count).fill(roll.sides);
 }
 
+/** Shape class for die with given sides (d4=diamond, d6=square, d8=diamond, d10=d10, d12=d12, d20=hex, d100=circle). */
+function diceShapeClass(sides: number): string {
+  if (sides <= 4) return "dice-shape-d4";
+  if (sides <= 6) return "dice-shape-d6";
+  if (sides <= 8) return "dice-shape-d8";
+  if (sides <= 10) return "dice-shape-d10";
+  if (sides <= 12) return "dice-shape-d12";
+  if (sides <= 20) return "dice-shape-d20";
+  return "dice-shape-d100";
+}
+
 /** Red (1) to green (max) for value on a die with given sides. Returns bg + text classes. */
 function diceColor(value: number, sides: number): string {
   if (sides <= 1) return "bg-zinc-200 text-zinc-800";
@@ -165,7 +176,7 @@ function TumblingDie({
   }, [sides, finalValue, isRevealing]);
   return (
     <span
-      className={`inline-flex h-12 w-12 items-center justify-center rounded-xl text-xl font-bold tabular-nums shadow-md transition-all ${colorClass} ${isRevealing ? "animate-dice-reveal-pop" : "animate-dice-shake"}`}
+      className={`inline-flex h-12 w-12 items-center justify-center text-xl font-bold tabular-nums shadow-md transition-all ${diceShapeClass(sides)} ${colorClass} ${isRevealing ? "animate-dice-reveal-pop" : "animate-dice-shake"}`}
     >
       {display}
     </span>
@@ -405,10 +416,10 @@ export default function RoomPage() {
   const [musicError, setMusicError] = useState<string | null>(null);
   const [recapText, setRecapText] = useState("");
   const [recapError, setRecapError] = useState<string | null>(null);
-  const [gmAssignId, setGmAssignId] = useState<string>("");
   const [gmAssignError, setGmAssignError] = useState<string | null>(null);
   const [inviteCopied, setInviteCopied] = useState(false);
   const [inviteCopyError, setInviteCopyError] = useState<string | null>(null);
+  const [participantsOpen, setParticipantsOpen] = useState(false);
   const [floatVideos, setFloatVideos] = useState(() => {
     if (typeof window === "undefined") return false;
     return localStorage.getItem("aynfrp:floatVideos") === "1";
@@ -425,7 +436,6 @@ export default function RoomPage() {
   const isRoomAdmin =
     currentParticipant?.id != null && room?.createdByParticipantId === currentParticipant.id;
   const canKick = role === "admin" || isRoomAdmin;
-  const gmCandidates = useMemo(() => participants, [participants]);
   const callParticipants = useMemo(() => {
     const now = Date.now();
     return participants.filter((person) => {
@@ -1102,13 +1112,13 @@ export default function RoomPage() {
     }
   }
 
-  async function assignGm() {
+  async function assignGm(targetParticipantId: string) {
     setGmAssignError(null);
-    if (!participantId || !gmAssignId) return;
+    if (!participantId) return;
     const res = await fetch(`/api/rooms/${roomId}/gm`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ participantId, gmParticipantId: gmAssignId }),
+      body: JSON.stringify({ participantId, gmParticipantId: targetParticipantId }),
     });
     const payload = (await res.json()) as ApiResponse<{ gmId: string }>;
     if (payload.error) {
@@ -1322,7 +1332,7 @@ export default function RoomPage() {
           role="dialog"
           aria-label="Dice roll"
         >
-          <div className="mx-4 flex max-w-md flex-col items-center rounded-2xl border-2 border-amber-200/50 bg-gradient-to-b from-amber-50 to-amber-100/80 px-8 py-10 shadow-2xl">
+          <div className="mx-4 flex min-w-[280px] max-w-md flex-col items-center rounded-2xl border-2 border-amber-200/50 bg-gradient-to-b from-amber-50 to-amber-100/80 px-8 py-10 shadow-2xl">
             {rollOverlay.phase === "rolling" ? (
               <>
                 <p className="mb-6 text-lg font-semibold uppercase tracking-widest text-amber-900/80">
@@ -1384,7 +1394,7 @@ export default function RoomPage() {
                     {isNat20 ? (
                       <p className="mt-4 text-lg font-bold text-amber-600">★ Critical! ★</p>
                     ) : isNat1 ? (
-                      <p className="mt-4 text-lg font-bold text-rose-600">… Fumble …</p>
+                      <p className="mt-4 text-lg font-bold text-rose-600">Crit Fail!!</p>
                     ) : null}
                   </div>
                 );
@@ -1395,39 +1405,123 @@ export default function RoomPage() {
       ) : null}
 
       <div className="min-h-screen bg-zinc-50 text-zinc-900">
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 py-10">
-        <header className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Room</p>
-            <h1 className="text-2xl font-semibold">{room.name}</h1>
-            <p className="text-sm text-zinc-500">Session: {room.sessionState}</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
+      <nav className="sticky top-0 z-40 border-b border-zinc-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-6 py-3">
+          <div className="flex min-w-0 flex-1 items-center gap-4">
+            <div className="min-w-0">
+              <h1 className="truncate text-lg font-semibold text-zinc-900">{room.name}</h1>
+              <p className="text-xs text-zinc-500">Session: {room.sessionState}</p>
+            </div>
             <button
               type="button"
-              className="rounded-lg border-2 border-zinc-200 bg-zinc-50 px-4 py-2 font-mono text-sm font-semibold tracking-wider text-zinc-800 transition hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800"
+              className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 font-mono text-sm font-semibold tracking-wider text-zinc-800 transition hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800"
               onClick={handleCopyInviteCode}
-              title="Click to copy"
+              title={inviteCopied ? "Copied" : "Copy invite code"}
             >
-              {room.inviteCode}
+              <span>{room.inviteCode}</span>
+              <span className={`text-base ${inviteCopied ? "text-emerald-600" : ""}`}>
+                {inviteCopied ? "✓" : "📋"}
+              </span>
             </button>
-            {inviteCopied ? (
-              <span className="text-xs font-medium text-emerald-600">Copied!</span>
-            ) : (
-              <span className="text-[11px] text-zinc-500">Click to copy</span>
-            )}
-            {inviteCopyError ? <span className="text-xs text-amber-600">{inviteCopyError}</span> : null}
+            {inviteCopyError ? <span className="shrink-0 text-xs text-amber-600">{inviteCopyError}</span> : null}
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="relative">
+              <button
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+                onClick={() => setParticipantsOpen((o) => !o)}
+                title="Participants"
+                aria-label="Participants"
+              >
+                👥
+              </button>
+              {participantsOpen ? (
+                <>
+                  <div className="fixed inset-0 z-40" aria-hidden onClick={() => setParticipantsOpen(false)} />
+                  <div className="absolute right-0 top-full z-50 mt-1 w-72 rounded-xl border border-zinc-200 bg-white p-3 shadow-lg">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-semibold">Participants</h3>
+                      <button
+                        className="rounded p-1 text-zinc-500 hover:bg-zinc-100"
+                        onClick={() => void refreshParticipants()}
+                        title="Refresh"
+                      >
+                        ↻
+                      </button>
+                    </div>
+                    {gmAssignError ? <p className="mt-1 text-xs text-amber-600">{gmAssignError}</p> : null}
+                    <div className="mt-2 max-h-64 space-y-1.5 overflow-y-auto">
+                      {participants.length === 0 ? (
+                        <p className="py-2 text-xs text-zinc-500">No participants yet.</p>
+                      ) : (
+                        participants.map((person) => {
+                          const { label: lastSeenLabel, online } = formatLastSeen(person.lastSeen);
+                          const isGm = person.id === room.gmId;
+                          const canAssign = (currentParticipant?.role === "admin" || isRoomAdmin) && !isGm;
+                          return (
+                            <div key={person.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-zinc-50">
+                              <div className="min-w-0 flex-1">
+                                <span className="text-sm font-medium">{person.name}</span>
+                                <span className="ml-1.5 text-[10px] text-zinc-500">
+                                  {person.role === "gm" ? "GM" : person.role === "admin" ? "Admin" : "Player"}
+                                </span>
+                                <span className={`ml-1.5 text-[10px] ${online ? "text-emerald-600" : "text-zinc-400"}`}>
+                                  {online ? "●" : lastSeenLabel}
+                                </span>
+                              </div>
+                              <div className="flex shrink-0 gap-1">
+                                {canAssign ? (
+                                  <button
+                                    className="rounded px-2 py-0.5 text-[10px] font-semibold text-amber-700 hover:bg-amber-50"
+                                    onClick={() => {
+                                      assignGm(person.id);
+                                      setParticipantsOpen(false);
+                                    }}
+                                  >
+                                    Make GM
+                                  </button>
+                                ) : isGm ? (
+                                  <span className="text-[10px] text-amber-600">GM</span>
+                                ) : null}
+                                {canKick && person.id !== participantId ? (
+                                  <button
+                                    className="rounded px-2 py-0.5 text-[10px] font-semibold text-rose-600 hover:bg-rose-50"
+                                    onClick={() => kickParticipant(person.id)}
+                                  >
+                                    Kick
+                                  </button>
+                                ) : null}
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                </>
+              ) : null}
+            </div>
             <button
-              className="rounded-full border border-rose-200 px-3 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50"
               onClick={leaveRoom}
+              title="Leave room"
+              aria-label="Leave room"
             >
-              Leave room
+              🚪
             </button>
-            <Link className="text-sm text-zinc-500 underline" href="/join">
-              Back to join
+            <Link
+              href="/join"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+              title="Back to join"
+              aria-label="Back to join"
+            >
+              ↩
             </Link>
           </div>
-        </header>
+        </div>
+      </nav>
+
+      <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 py-6">
 
         {invitePrompt && !participantId ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm">
@@ -1591,39 +1685,32 @@ export default function RoomPage() {
                         const termSides = getTermSides(roll);
                         const hasNat20 = termSides.some((s, i) => s === 20 && (roll.results[i] ?? 0) === 20);
                         const hasNat1 = termSides.some((s, i) => s === 20 && (roll.results[i] ?? 0) === 1);
+                        const nameLabel = roll.rollName
+                          ? `${roll.rollName} · ${roll.participantName}`
+                          : roll.participantName;
                         return (
                           <div
                             key={roll.id}
-                            className={`rounded-xl border-2 bg-gradient-to-br from-white to-amber-50/30 p-4 shadow-sm transition hover:shadow-md ${
+                            className={`flex items-center gap-3 rounded-xl border-2 bg-gradient-to-br from-white to-amber-50/30 p-3 shadow-sm transition hover:shadow-md ${
                               hasNat20 ? "border-amber-300 shadow-amber-100/50" : hasNat1 ? "border-rose-200" : "border-amber-200/60"
                             }`}
                           >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex flex-wrap gap-2">
-                                {termSides.map((sides, i) => (
-                                  <span
-                                    key={i}
-                                    className={`inline-flex h-9 w-9 items-center justify-center rounded-lg text-base font-bold shadow-sm ${diceColor(roll.results[i] ?? 0, sides)}`}
-                                  >
-                                    {roll.results[i]}
-                                  </span>
-                                ))}
-                              </div>
-                              <span className="text-2xl font-bold tabular-nums text-zinc-800">
+                            <p className="min-w-0 shrink truncate text-xs font-medium text-zinc-700" title={nameLabel}>
+                              {nameLabel}
+                            </p>
+                            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                              {termSides.map((sides, i) => (
+                                <span
+                                  key={i}
+                                  className={`inline-flex h-8 w-8 shrink-0 items-center justify-center text-sm font-bold shadow-sm ${diceShapeClass(sides)} ${diceColor(roll.results[i] ?? 0, sides)}`}
+                                >
+                                  {roll.results[i]}
+                                </span>
+                              ))}
+                              <span className="shrink-0 text-lg font-bold tabular-nums text-zinc-800">
                                 {roll.total}
                               </span>
                             </div>
-                            <p className="mt-2 text-xs font-medium text-zinc-600">
-                              {roll.rollName ? (
-                                <>
-                                  <span className="text-amber-700">{roll.rollName}</span>
-                                  <span className="mx-1.5">·</span>
-                                  {roll.participantName}
-                                </>
-                              ) : (
-                                roll.participantName
-                              )}
-                            </p>
                           </div>
                         );
                       })}
@@ -1754,8 +1841,8 @@ export default function RoomPage() {
           </div>
         </section>
 
-        <section className="grid gap-6 lg:grid-cols-[2fr_1fr]">
-          <div className="space-y-6">
+        <section className={`grid gap-6 ${currentParticipant?.role === "admin" || isRoomAdmin ? "lg:grid-cols-[2fr_1fr]" : "lg:grid-cols-1"}`}>
+          <div className="space-y-6 min-w-0">
             <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <h2 className="text-lg font-semibold">Session controls</h2>
@@ -2049,7 +2136,7 @@ export default function RoomPage() {
                                 {parseExpressionSides(e.expression).map((sides, idx) => (
                                   <span
                                     key={idx}
-                                    className={`inline-flex h-7 min-w-[1.75rem] items-center justify-center rounded-md px-1 font-mono text-sm font-bold tabular-nums shadow-sm ${diceColor(e.results![idx] ?? 0, sides)}`}
+                                    className={`inline-flex h-7 min-w-[1.75rem] items-center justify-center px-1 font-mono text-sm font-bold tabular-nums shadow-sm ${diceShapeClass(sides)} ${diceColor(e.results![idx] ?? 0, sides)}`}
                                     title={`d${sides}`}
                                   >
                                     {e.results![idx] ?? "?"}
@@ -2109,7 +2196,7 @@ export default function RoomPage() {
                     {getTermSides(lastRoll).map((sides, i) => (
                       <span
                         key={i}
-                        className={`inline-flex h-8 w-8 items-center justify-center rounded-md font-bold tabular-nums ${diceColor(lastRoll.results[i] ?? 0, sides)}`}
+                        className={`inline-flex h-8 w-8 items-center justify-center font-bold tabular-nums shadow-sm ${diceShapeClass(sides)} ${diceColor(lastRoll.results[i] ?? 0, sides)}`}
                         title={`d${sides}`}
                       >
                         {lastRoll.results[i]}
@@ -2235,39 +2322,32 @@ export default function RoomPage() {
                     const termSides = getTermSides(roll);
                     const hasNat20 = termSides.some((s, i) => s === 20 && (roll.results[i] ?? 0) === 20);
                     const hasNat1 = termSides.some((s, i) => s === 20 && (roll.results[i] ?? 0) === 1);
+                    const nameLabel = roll.rollName
+                      ? `${roll.rollName} · ${roll.participantName}`
+                      : roll.participantName;
                     return (
                       <div
                         key={roll.id}
-                        className={`rounded-xl border-2 bg-gradient-to-br from-white to-amber-50/30 p-4 shadow-sm transition hover:shadow-md ${
+                        className={`flex items-center gap-3 rounded-xl border-2 bg-gradient-to-br from-white to-amber-50/30 p-3 shadow-sm transition hover:shadow-md ${
                           hasNat20 ? "border-amber-300 shadow-amber-100/50" : hasNat1 ? "border-rose-200" : "border-amber-200/60"
                         }`}
                       >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex flex-wrap gap-1.5">
-                            {termSides.map((sides, i) => (
-                              <span
-                                key={i}
-                                className={`inline-flex h-7 w-7 items-center justify-center rounded-lg text-sm font-bold shadow-sm ${diceColor(roll.results[i] ?? 0, sides)}`}
-                              >
-                                {roll.results[i]}
-                              </span>
-                            ))}
-                          </div>
-                          <span className="text-xl font-bold tabular-nums text-zinc-800">
+                        <p className="min-w-0 shrink truncate text-[11px] font-medium text-zinc-700" title={nameLabel}>
+                          {nameLabel}
+                        </p>
+                        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+                          {termSides.map((sides, i) => (
+                            <span
+                              key={i}
+                              className={`inline-flex h-7 w-7 shrink-0 items-center justify-center text-xs font-bold shadow-sm ${diceShapeClass(sides)} ${diceColor(roll.results[i] ?? 0, sides)}`}
+                            >
+                              {roll.results[i]}
+                            </span>
+                          ))}
+                          <span className="shrink-0 text-base font-bold tabular-nums text-zinc-800">
                             {roll.total}
                           </span>
                         </div>
-                        <p className="mt-2 text-[11px] font-medium text-zinc-600">
-                          {roll.rollName ? (
-                            <>
-                              <span className="text-amber-700">{roll.rollName}</span>
-                              <span className="mx-1">·</span>
-                              {roll.participantName}
-                            </>
-                          ) : (
-                            roll.participantName
-                          )}
-                        </p>
                       </div>
                     );
                   })
@@ -2348,114 +2428,22 @@ export default function RoomPage() {
             </div>
           </div>
 
-          <aside className="space-y-6">
-            <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">Participants</h2>
-                <button
-                  className="rounded-full p-1.5 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700"
-                  onClick={() => void refreshParticipants()}
-                  title="Refresh"
-                  aria-label="Refresh participants"
-                >
-                  ↻
-                </button>
-              </div>
-              <div className="mt-4 space-y-2 text-sm">
-                {participants.length === 0 ? (
-                  <p className="text-zinc-500">No participants yet.</p>
-                ) : (
-                  participants.map((person) => {
-                    const { label: lastSeenLabel, online } = formatLastSeen(person.lastSeen);
-                    return (
-                      <div key={person.id} className="flex items-center justify-between gap-2">
-                        <div>
-                          <span>{person.name}</span>
-                          <span className="ml-2 text-xs text-zinc-500">
-                            {person.role === "gm" ? "GM" : person.role === "admin" ? "Admin" : "Player"}
-                          </span>
-                          <span className={`ml-2 text-[10px] ${online ? "text-emerald-600 font-medium" : "text-zinc-400"}`}>
-                            {online ? "● Online" : lastSeenLabel}
-                          </span>
-                        </div>
-                        {canKick && person.id !== participantId ? (
-                          <button
-                            className="rounded px-2 py-1 text-[10px] font-semibold text-rose-600 hover:bg-rose-100"
-                            onClick={() => kickParticipant(person.id)}
-                          >
-                            Kick
-                          </button>
-                        ) : null}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-              {room.gmId ? (
-                <p className="mt-3 text-xs text-zinc-500">
-                  Current GM: {participants.find((person) => person.id === room.gmId)?.name ?? "—"}
-                </p>
-              ) : (
-                <p className="mt-3 text-xs text-zinc-500">GM not assigned yet.</p>
-              )}
-            </div>
-            {(currentParticipant?.role === "admin" || isRoomAdmin) ? (
+          {(currentParticipant?.role === "admin" || isRoomAdmin) ? (
+            <aside className="space-y-6">
               <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-                <h2 className="text-lg font-semibold">Assign GM</h2>
-                <p className="text-sm text-zinc-500">
-                  Select a participant to act as DM/GM for this room.
+                <h2 className="text-lg font-semibold">Admin</h2>
+                <p className="mt-1 text-sm text-zinc-500">
+                  Room defaults (name prefix, privacy), view all rooms, and metrics.
                 </p>
-                <div className="mt-4 flex flex-col gap-3">
-                  <select
-                    className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
-                    value={gmAssignId}
-                    onChange={(event) => setGmAssignId(event.target.value)}
-                    disabled={gmCandidates.length === 0}
-                  >
-                    <option value="">
-                      {gmCandidates.length === 0 ? "No eligible participants yet" : "Choose GM"}
-                    </option>
-                    {gmCandidates.map((person) => (
-                      <option key={person.id} value={person.id}>
-                        {person.name}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    className="inline-flex h-10 items-center justify-center rounded-full bg-zinc-900 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-zinc-300"
-                    onClick={assignGm}
-                    disabled={!gmAssignId}
-                  >
-                    Assign GM
-                  </button>
-                  {gmAssignError ? (
-                    <p className="text-xs text-amber-600">{gmAssignError}</p>
-                  ) : null}
-                </div>
+                <Link
+                  className="mt-3 inline-flex text-sm font-semibold text-zinc-900 underline"
+                  href="/admin"
+                >
+                  Go to admin view
+                </Link>
               </div>
-            ) : null}
-
-            <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-              <h2 className="text-lg font-semibold">Admin</h2>
-              <p className="text-sm text-zinc-500">Room defaults and organization.</p>
-              <Link
-                className="mt-3 inline-flex text-sm font-semibold text-zinc-900 underline"
-                href="/admin"
-              >
-                Go to admin view
-              </Link>
-            </div>
-            <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-              <h2 className="text-lg font-semibold">Account</h2>
-              <p className="text-sm text-zinc-500">Optional magic-link account.</p>
-              <Link
-                className="mt-3 inline-flex text-sm font-semibold text-zinc-900 underline"
-                href="/account"
-              >
-                Create account
-              </Link>
-            </div>
-          </aside>
+            </aside>
+          ) : null}
         </section>
       </main>
     </div>

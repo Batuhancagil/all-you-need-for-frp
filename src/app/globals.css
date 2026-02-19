@@ -108,3 +108,12 @@ body {
 .animate-roll-overlay-in {
   animation: roll-overlay-fade-in 0.2s ease-out;
 }
+
+/* Dice shapes – each polyhedral has a distinct 2D silhouette */
+.dice-shape-d4 { clip-path: polygon(50% 0%, 100% 100%, 0% 100%); }
+.dice-shape-d6 { clip-path: polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%); }
+.dice-shape-d8 { clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); }
+.dice-shape-d10 { clip-path: polygon(50% 0%, 100% 35%, 82% 100%, 18% 100%, 0% 35%); }
+.dice-shape-d12 { clip-path: polygon(50% 0%, 95% 25%, 95% 75%, 50% 100%, 5% 75%, 5% 25%); }
+.dice-shape-d20 { clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%); }
+.dice-shape-d100 { clip-path: circle(50%); }
