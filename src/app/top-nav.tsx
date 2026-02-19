@@ -55,9 +55,9 @@ export default function TopNav() {
           <span>AllYouNeedForFRP</span>
         </Link>
 
-        <div className="relative">
+        <div className="relative flex items-center gap-2">
           <button
-            className="mr-2 flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-400 dark:hover:bg-zinc-800"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-400 dark:hover:bg-zinc-800"
             onClick={toggleTheme}
             title={theme === "dark" ? "Switch to light" : "Switch to dark"}
             aria-label="Toggle theme"

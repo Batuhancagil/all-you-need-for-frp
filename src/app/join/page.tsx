@@ -188,9 +188,9 @@ export default function JoinPage() {
 
   if (status === "loading") {
     return (
-      <div className="min-h-screen bg-zinc-50 text-zinc-900">
+      <div className="min-h-screen bg-zinc-50 text-zinc-900 dark:bg-zinc-900 dark:text-zinc-100">
         <main className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-6 py-16">
-          <p className="text-sm text-zinc-600">Checking sign-in status...</p>
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">Checking sign-in status...</p>
         </main>
       </div>
     );
@@ -198,24 +198,24 @@ export default function JoinPage() {
 
   if (status !== "authenticated") {
     return (
-      <div className="min-h-screen bg-zinc-50 text-zinc-900">
+      <div className="min-h-screen bg-zinc-50 text-zinc-900 dark:bg-zinc-900 dark:text-zinc-100">
         <main className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-6 py-16">
           <header>
             <h1 className="text-3xl font-semibold">Sign in to join</h1>
-            <p className="mt-2 text-sm text-zinc-600">
+            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
               Use Google to continue.
             </p>
           </header>
           {error ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/50 dark:text-red-400">
               {error}
             </div>
           ) : null}
-          <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+          <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
             <h2 className="text-lg font-semibold">Google sign-in</h2>
             <div className="mt-4 flex flex-col gap-3">
               <button
-                className="inline-flex h-11 items-center justify-center rounded-full bg-zinc-900 px-4 text-sm font-semibold text-white"
+                className="inline-flex h-11 items-center justify-center rounded-full bg-zinc-900 px-4 text-sm font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900"
                 onClick={() => signIn("google", { callbackUrl: "/join" })}
               >
                 Continue with Google
@@ -228,51 +228,51 @@ export default function JoinPage() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-900">
+    <div className="min-h-screen bg-zinc-50 text-zinc-900 dark:bg-zinc-900 dark:text-zinc-100">
       <main className="mx-auto flex w-full max-w-5xl flex-col gap-10 px-6 py-16">
         <header>
           <h1 className="text-3xl font-semibold">Join a session</h1>
-          <p className="mt-2 text-sm text-zinc-600">
+          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
             Enter an invite code or create a room to get started.
           </p>
-          <div className="mt-3 flex items-center gap-3 text-xs text-zinc-500">
+          <div className="mt-3 flex items-center gap-3 text-xs text-zinc-500 dark:text-zinc-400">
             <span>Signed in as {session.user?.email ?? "account"}.</span>
-            <button className="underline" onClick={() => signOut({ callbackUrl: "/join" })}>
+            <button className="underline hover:text-zinc-700 dark:hover:text-zinc-300" onClick={() => signOut({ callbackUrl: "/join" })}>
               Sign out
             </button>
           </div>
         </header>
 
         {error ? (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/50 dark:text-red-400">
             {error}
           </div>
         ) : null}
 
         <section className="grid gap-8 lg:grid-cols-2">
-          <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
             <h2 className="text-lg font-semibold">Join with invite</h2>
             <div className="mt-4 flex flex-col gap-4">
-              <label className="text-sm font-semibold text-zinc-600">
+              <label className="text-sm font-semibold text-zinc-600 dark:text-zinc-400">
                 Invite code
                 <input
-                  className="mt-2 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                  className="mt-2 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
                   placeholder="AB12CD"
                   value={inviteCode}
                   onChange={(event) => setInviteCode(event.target.value.toUpperCase())}
                 />
               </label>
-              <label className="text-sm font-semibold text-zinc-600">
+              <label className="text-sm font-semibold text-zinc-600 dark:text-zinc-400">
                 Display name
                 <input
-                  className="mt-2 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                  className="mt-2 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
                   placeholder="Your name"
                   value={displayName}
                   onChange={(event) => setDisplayName(event.target.value)}
                 />
               </label>
               <button
-                className="mt-2 inline-flex h-11 items-center justify-center rounded-full bg-zinc-900 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-300"
+                className="mt-2 inline-flex h-11 items-center justify-center rounded-full bg-zinc-900 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-300 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 dark:disabled:bg-zinc-600"
                 onClick={handleJoin}
                 disabled={!canJoin || loading}
               >
@@ -281,31 +281,31 @@ export default function JoinPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
             <h2 className="text-lg font-semibold">Create a room</h2>
             <div className="mt-4 flex flex-col gap-4">
-              <label className="text-sm font-semibold text-zinc-600">
+              <label className="text-sm font-semibold text-zinc-600 dark:text-zinc-400">
                 Room name
                 <input
-                  className="mt-2 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                  className="mt-2 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
                   placeholder="Friday Night Campaign"
                   value={roomName}
                   onChange={(event) => setRoomName(event.target.value)}
                 />
               </label>
-              <label className="text-sm font-semibold text-zinc-600">
+              <label className="text-sm font-semibold text-zinc-600 dark:text-zinc-400">
                 Your name
                 <input
-                  className="mt-2 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                  className="mt-2 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
                   placeholder="Host name"
                   value={displayName}
                   onChange={(event) => setDisplayName(event.target.value)}
                 />
               </label>
-              <label className="text-sm font-semibold text-zinc-600">
+              <label className="text-sm font-semibold text-zinc-600 dark:text-zinc-400">
                 Privacy
                 <select
-                  className="mt-2 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                  className="mt-2 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
                   value={privacy}
                   onChange={(event) => setPrivacy(event.target.value as "private" | "public")}
                 >
@@ -314,7 +314,7 @@ export default function JoinPage() {
                 </select>
               </label>
               <button
-                className="mt-2 inline-flex h-11 items-center justify-center rounded-full bg-zinc-900 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-300"
+                className="mt-2 inline-flex h-11 items-center justify-center rounded-full bg-zinc-900 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-300 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 dark:disabled:bg-zinc-600"
                 onClick={handleCreate}
                 disabled={!canCreate || loading}
               >
@@ -324,13 +324,13 @@ export default function JoinPage() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+        <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
           <div>
             <h2 className="text-lg font-semibold">Recent sessions</h2>
-            <p className="text-sm text-zinc-600">Rejoin quickly with one click.</p>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">Rejoin quickly with one click.</p>
           </div>
           {recentRooms.length === 0 ? (
-            <p className="mt-4 text-sm text-zinc-500">
+            <p className="mt-4 text-sm text-zinc-500 dark:text-zinc-400">
               No recent sessions yet. Join a room to populate this list.
             </p>
           ) : (
@@ -338,26 +338,26 @@ export default function JoinPage() {
               {recentRooms.map((room) => (
                 <button
                   key={room.roomId}
-                  className="rounded-xl border border-zinc-200 px-4 py-3 text-left text-sm transition hover:border-zinc-300 hover:bg-zinc-50"
+                  className="rounded-xl border border-zinc-200 px-4 py-3 text-left text-sm transition hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-600 dark:hover:border-zinc-500 dark:hover:bg-zinc-700"
                   onClick={() => handleRejoin(room)}
                 >
-                  <p className="font-semibold text-zinc-900">{room.name}</p>
-                  <p className="mt-1 text-xs text-zinc-500">Invite: {room.inviteCode}</p>
+                  <p className="font-semibold text-zinc-900 dark:text-zinc-100">{room.name}</p>
+                  <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Invite: {room.inviteCode}</p>
                 </button>
               ))}
             </div>
           )}
         </section>
 
-        <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+        <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
           <div>
             <h2 className="text-lg font-semibold">Public rooms</h2>
-            <p className="text-sm text-zinc-600">Discover open rooms and join with one click.</p>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">Discover open rooms and join with one click.</p>
           </div>
           {publicRoomsLoading ? (
-            <p className="mt-4 text-sm text-zinc-500">Loading public rooms...</p>
+            <p className="mt-4 text-sm text-zinc-500 dark:text-zinc-400">Loading public rooms...</p>
           ) : publicRooms.length === 0 ? (
-            <p className="mt-4 text-sm text-zinc-500">
+            <p className="mt-4 text-sm text-zinc-500 dark:text-zinc-400">
               No public rooms right now. Create one and set Privacy to Public.
             </p>
           ) : (
@@ -365,16 +365,16 @@ export default function JoinPage() {
               {publicRooms.map((room) => (
                 <button
                   key={room.id}
-                  className="rounded-xl border border-zinc-200 px-4 py-3 text-left text-sm transition hover:border-zinc-300 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:bg-zinc-100"
+                  className="rounded-xl border border-zinc-200 px-4 py-3 text-left text-sm transition hover:border-zinc-300 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:bg-zinc-100 dark:border-zinc-600 dark:hover:border-zinc-500 dark:hover:bg-zinc-700 dark:disabled:bg-zinc-800"
                   onClick={() => handleJoinPublic(room)}
                   disabled={loading || displayName.trim().length === 0}
                 >
-                  <p className="font-semibold text-zinc-900">{room.name}</p>
-                  <p className="mt-1 text-xs text-zinc-500">
+                  <p className="font-semibold text-zinc-900 dark:text-zinc-100">{room.name}</p>
+                  <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
                     Invite: {room.inviteCode} • {room.participantCount} players • {room.sessionState}
                   </p>
                   {displayName.trim().length === 0 ? (
-                    <p className="mt-2 text-xs text-amber-600">
+                    <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
                       Enter your display name above to join this public room.
                     </p>
                   ) : null}

@@ -382,7 +382,7 @@ export default function RoomPage() {
   const [chatInput, setChatInput] = useState("");
   const [chatError, setChatError] = useState<string | null>(null);
   const [unreadByChannel, setUnreadByChannel] = useState<Record<string, number>>({});
-  const chatCursorRef = useRef<string>(new Date(0).toISOString());
+  const chatCursorRef = useRef<string>(new Date().toISOString());
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
   const [audioMode, setAudioMode] = useState<"always" | "ptt">("always");
@@ -422,8 +422,6 @@ export default function RoomPage() {
   const [initiativeError, setInitiativeError] = useState<string | null>(null);
   const [musicUrl, setMusicUrl] = useState("");
   const [musicError, setMusicError] = useState<string | null>(null);
-  const [recapText, setRecapText] = useState("");
-  const [recapError, setRecapError] = useState<string | null>(null);
   const [gmAssignError, setGmAssignError] = useState<string | null>(null);
   const [inviteCopied, setInviteCopied] = useState(false);
   const [inviteCopyError, setInviteCopyError] = useState<string | null>(null);
@@ -531,7 +529,6 @@ export default function RoomPage() {
         return;
       }
       setRoom(payload.data);
-      setRecapText(payload.data.recap ?? "");
       if (payload.data.backgroundMusicUrl) {
         setMusicUrl(payload.data.backgroundMusicUrl);
       }
@@ -697,6 +694,17 @@ export default function RoomPage() {
         chatCursorRef.current = payload.data.cursor;
         if (payload.data.messages.length === 0) return;
 
+        const knownChannelIds = new Set(channels.map((c) => c.id));
+        const hasUnknownChannel = payload.data.messages.some((m) => !knownChannelIds.has(m.channelId));
+        if (hasUnknownChannel) {
+          fetch(`/api/rooms/${roomId}/channels`)
+            .then((r) => r.json())
+            .then((p: ApiResponse<{ channels: Channel[] }>) => {
+              if (!stopped && p.data) setChannels(p.data.channels);
+            })
+            .catch(() => null);
+        }
+
         if (selectedTextChannelId) {
           const selectedNew = payload.data.messages.filter(
             (message) => message.channelId === selectedTextChannelId
@@ -735,12 +743,12 @@ export default function RoomPage() {
     void pollUpdates();
     const interval = setInterval(() => {
       void pollUpdates();
-    }, 2000);
+    }, 1000);
     return () => {
       stopped = true;
       clearInterval(interval);
     };
-  }, [participantId, roomId, selectedTextChannelId]);
+  }, [participantId, roomId, selectedTextChannelId, channels]);
 
   useEffect(() => {
     if (!selectedTextChannelId) return;
@@ -1127,20 +1135,6 @@ export default function RoomPage() {
     }
   }
 
-  async function saveRecap() {
-    setRecapError(null);
-    if (!participantId) return;
-    const res = await fetch(`/api/rooms/${roomId}/recap`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ participantId, recap: recapText }),
-    });
-    const payload = (await res.json()) as ApiResponse<{ recap: string }>;
-    if (payload.error) {
-      setRecapError(payload.error.message);
-    }
-  }
-
   async function assignGm(targetParticipantId: string) {
     setGmAssignError(null);
     if (!participantId) return;
@@ -1319,25 +1313,25 @@ export default function RoomPage() {
 
   if (status === "loading") {
     return (
-      <div className="min-h-screen bg-zinc-50 p-6 text-zinc-900">
-        <p className="text-sm text-zinc-600">Checking sign-in status...</p>
+      <div className="min-h-screen bg-zinc-50 p-6 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">Checking sign-in status...</p>
       </div>
     );
   }
 
   if (status === "unauthenticated") {
     return (
-      <div className="min-h-screen bg-zinc-50 p-6 text-zinc-900">
-        <p className="text-sm text-zinc-600">Redirecting to sign-in...</p>
+      <div className="min-h-screen bg-zinc-50 p-6 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">Redirecting to sign-in...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-zinc-50 p-6 text-zinc-900">
-        <p className="text-sm text-red-600">{error}</p>
-        <Link className="mt-4 inline-flex text-sm text-zinc-600" href="/join">
+      <div className="min-h-screen bg-zinc-50 p-6 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+        <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+        <Link className="mt-4 inline-flex text-sm text-zinc-600 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-300" href="/join">
           Back to join
         </Link>
       </div>
@@ -1346,8 +1340,8 @@ export default function RoomPage() {
 
   if (!room) {
     return (
-      <div className="min-h-screen bg-zinc-50 p-6 text-zinc-900">
-        <p className="text-sm text-zinc-600">Loading room...</p>
+      <div className="min-h-screen bg-zinc-50 p-6 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">Loading room...</p>
       </div>
     );
   }
@@ -1444,7 +1438,7 @@ export default function RoomPage() {
             <div className="group relative shrink-0">
               <button
                 type="button"
-                className="inline-flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 font-mono text-sm font-semibold tracking-wider text-zinc-800 transition hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800"
+                className="inline-flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 font-mono text-sm font-semibold tracking-wider text-zinc-800 transition hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:border-amber-500 dark:hover:bg-amber-950/50 dark:hover:text-amber-300"
                 onClick={handleCopyInviteCode}
                 title={inviteCopied ? "Copied" : "Copy invite code"}
               >
@@ -1462,7 +1456,7 @@ export default function RoomPage() {
           <div className="flex shrink-0 items-center gap-2">
             <div className="relative group">
               <button
-                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:border-zinc-600 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
                 onClick={() => setParticipantsOpen((o) => !o)}
                 title="Participants"
                 aria-label="Participants"
@@ -1482,11 +1476,11 @@ export default function RoomPage() {
               {participantsOpen ? (
                 <>
                   <div className="fixed inset-0 z-40" aria-hidden onClick={() => setParticipantsOpen(false)} />
-                  <div className="absolute right-0 top-full z-50 mt-1 w-72 rounded-xl border border-zinc-200 bg-white p-3 shadow-lg">
+                  <div className="absolute right-0 top-full z-50 mt-1 w-72 rounded-xl border border-zinc-200 bg-white p-3 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
                     <div className="flex items-center justify-between">
                       <h3 className="text-sm font-semibold">Participants</h3>
                       <button
-                        className="rounded p-1 text-zinc-500 hover:bg-zinc-100"
+                        className="rounded p-1 text-zinc-500 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
                         onClick={() => void refreshParticipants()}
                         title="Refresh"
                       >
@@ -1503,7 +1497,7 @@ export default function RoomPage() {
                           const isGm = person.id === room.gmId;
                           const canAssign = (currentParticipant?.role === "admin" || isRoomAdmin) && !isGm;
                           return (
-                            <div key={person.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-zinc-50">
+                            <div key={person.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-zinc-50 dark:hover:bg-zinc-800">
                               <div className="min-w-0 flex-1">
                                 <span className="text-sm font-medium">{person.name}</span>
                                 <span className="ml-1.5 text-[10px] text-zinc-500">
@@ -1569,11 +1563,11 @@ export default function RoomPage() {
       <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 py-6">
 
         {invitePrompt && !participantId ? (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm">
-            <p className="font-semibold">Enter a display name to join</p>
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-800 dark:bg-amber-950/40">
+            <p className="font-semibold dark:text-amber-100">Enter a display name to join</p>
             <div className="mt-2 flex flex-col gap-2 sm:flex-row">
               <input
-                className="w-full rounded-lg border border-amber-200 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-amber-200 px-3 py-2 text-sm dark:border-amber-700 dark:bg-zinc-900 dark:text-zinc-100"
                 placeholder="Display name"
                 value={displayName}
                 onChange={(event) => setDisplayName(event.target.value)}
@@ -1593,7 +1587,7 @@ export default function RoomPage() {
             <div className="flex items-center justify-between">
               <p className="text-xs font-semibold uppercase tracking-[0.1em] text-zinc-500">Channels</p>
               <button
-                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-zinc-200 text-sm font-semibold text-zinc-700 hover:bg-zinc-100"
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-zinc-200 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
                 onClick={() => {
                   setChannelCreateOpen((prev) => !prev);
                   setChannelCreateError(null);
@@ -1604,9 +1598,9 @@ export default function RoomPage() {
               </button>
             </div>
             {channelCreateOpen ? (
-              <div className="mt-2 rounded-lg border border-zinc-200 bg-zinc-50 p-2">
+              <div className="mt-2 rounded-lg border border-zinc-200 bg-zinc-50 p-2 dark:border-zinc-700 dark:bg-zinc-800">
                 <select
-                  className="w-full rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-xs"
+                  className="w-full rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-xs dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
                   value={channelCreateType}
                   onChange={(event) => setChannelCreateType(event.target.value as "text" | "voice" | "dice")}
                 >
@@ -1615,7 +1609,7 @@ export default function RoomPage() {
                   <option value="dice">Dice channel</option>
                 </select>
                 <input
-                  className="mt-2 w-full rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-xs"
+                  className="mt-2 w-full rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-xs dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
                   placeholder="Channel name"
                   value={channelCreateName}
                   onChange={(event) => setChannelCreateName(event.target.value)}
@@ -1647,21 +1641,24 @@ export default function RoomPage() {
                   <button
                     key={channel.id}
                     className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm ${
-                      selectedChannel?.id === channel.id ? "bg-zinc-900 text-white" : "hover:bg-zinc-100"
+                      selectedChannel?.id === channel.id ? "bg-zinc-900 text-white dark:bg-zinc-700" : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
                     }`}
-                    onClick={() => setSelectedChannelId(channel.id)}
+                    onClick={() => {
+                      setSelectedChannelId(channel.id);
+                      setUnreadByChannel((prev) =>
+                        (prev[channel.id] ?? 0) > 0 ? { ...prev, [channel.id]: 0 } : prev
+                      );
+                    }}
                   >
                     <span>#{channel.name}</span>
                     {(unreadByChannel[channel.id] ?? 0) > 0 ? (
                       <span
-                        className={`inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-                          selectedChannel?.id === channel.id
-                            ? "bg-white text-zinc-900"
-                            : "bg-zinc-900 text-white"
+                        className={`inline-flex h-2 w-2 shrink-0 rounded-full ${
+                          selectedChannel?.id === channel.id ? "bg-white" : "bg-zinc-900 dark:bg-zinc-100"
                         }`}
-                      >
-                        {unreadByChannel[channel.id]}
-                      </span>
+                        title={`${unreadByChannel[channel.id]} unread`}
+                        aria-label={`${unreadByChannel[channel.id]} unread messages`}
+                      />
                     ) : null}
                   </button>
                 ))}
@@ -1675,7 +1672,7 @@ export default function RoomPage() {
                     <button
                       key={channel.id}
                       className={`flex w-full items-center rounded-lg px-2 py-1.5 text-left text-sm ${
-                        selectedChannel?.id === channel.id ? "bg-zinc-900 text-white" : "hover:bg-zinc-100"
+                        selectedChannel?.id === channel.id ? "bg-zinc-900 text-white dark:bg-zinc-700" : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
                       }`}
                       onClick={() => setSelectedChannelId(channel.id)}
                     >
@@ -1692,7 +1689,7 @@ export default function RoomPage() {
                   <div key={channel.id}>
                     <button
                       className={`flex w-full items-center rounded-lg px-2 py-1.5 text-left text-sm ${
-                        selectedChannel?.id === channel.id ? "bg-zinc-900 text-white" : "hover:bg-zinc-100"
+                        selectedChannel?.id === channel.id ? "bg-zinc-900 text-white dark:bg-zinc-700" : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
                       }`}
                       onClick={() => setSelectedChannelId(channel.id)}
                     >
@@ -1720,7 +1717,7 @@ export default function RoomPage() {
                 <p className="mt-1 text-xs text-zinc-500">Full roll history for this room</p>
                 <div
                   ref={chatContainerRef}
-                  className="mt-3 max-h-96 overflow-y-auto rounded-lg border border-zinc-200 bg-zinc-50 p-3"
+                  className="mt-3 max-h-96 overflow-y-auto rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-800"
                 >
                   {rolls.length === 0 ? (
                     <p className="text-xs text-zinc-500">No rolls yet.</p>
@@ -1768,7 +1765,7 @@ export default function RoomPage() {
                 <h3 className="text-base font-semibold">#{selectedChannel.name}</h3>
                 <div
                   ref={chatContainerRef}
-                  className="mt-3 h-64 overflow-y-auto rounded-lg border border-zinc-200 bg-zinc-50 p-3"
+                  className="mt-3 h-64 overflow-y-auto rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-800"
                   onScroll={(event) => {
                     const target = event.currentTarget;
                     const distanceToBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
@@ -1780,7 +1777,7 @@ export default function RoomPage() {
                   ) : (
                     <div className="space-y-2">
                       {chatMessages.map((message) => (
-                        <div key={message.id} className="rounded-lg border border-zinc-200 bg-white px-3 py-2">
+                        <div key={message.id} className="rounded-lg border border-zinc-200 bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-800">
                           <p className="text-xs font-semibold">
                             {message.participant.name}
                             <span className="ml-2 text-[10px] uppercase text-zinc-400">{message.participant.role}</span>
@@ -1793,7 +1790,7 @@ export default function RoomPage() {
                 </div>
                 <div className="mt-3 flex gap-2">
                   <input
-                    className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100"
                     value={chatInput}
                     placeholder={`Message #${selectedChannel.name}`}
                     onChange={(event) => setChatInput(event.target.value)}
@@ -1885,237 +1882,233 @@ export default function RoomPage() {
                   <p className="mt-3 text-xs text-amber-600">{callError}</p>
                 ) : null}
                 {callJoined ? (
-                  <>
-                    <div className="mt-4 flex flex-wrap items-center gap-3">
-                      <label className="flex items-center gap-2 text-xs dark:text-zinc-400">
-                        <input
-                          type="checkbox"
-                          checked={floatVideos}
-                          onChange={(e) => {
-                            const v = e.target.checked;
-                            setFloatVideos(v);
-                            setFloatingVideoMinimized(false);
-                            localStorage.setItem("aynfrp:floatVideos", v ? "1" : "0");
-                          }}
-                        />
-                        <span>Float videos</span>
-                      </label>
-                      {(canManageSession || room?.backgroundMusicUrl) && (
-                        <button
-                          type="button"
-                          className="rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
-                          onClick={() => setMusicModuleOpen(true)}
-                        >
-                          Background music
-                        </button>
-                      )}
-                      {callFrameReady ? (
-                        <span className="rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-semibold text-emerald-700">
-                          Connected
-                        </span>
-                      ) : (
-                        <span className="rounded-full bg-amber-100 px-3 py-1 text-[11px] font-semibold text-amber-700">
-                          Connecting...
-                        </span>
-                      )}
-                    </div>
-                    {floatVideos && floatingVideoMinimized ? (
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <label className="flex items-center gap-2 text-xs dark:text-zinc-400">
+                      <input
+                        type="checkbox"
+                        checked={floatVideos}
+                        onChange={(e) => {
+                          const v = e.target.checked;
+                          setFloatVideos(v);
+                          setFloatingVideoMinimized(false);
+                          localStorage.setItem("aynfrp:floatVideos", v ? "1" : "0");
+                        }}
+                      />
+                      <span>Float videos</span>
+                    </label>
+                    {(canManageSession || room?.backgroundMusicUrl) && (
                       <button
                         type="button"
-                        className="fixed bottom-4 right-24 z-50 flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-4 py-2 text-xs font-semibold text-zinc-700 shadow-lg hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
-                        onClick={() => setFloatingVideoMinimized(false)}
-                        title="Show video"
+                        className="rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                        onClick={() => setMusicModuleOpen(true)}
                       >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M23 7l-7 5 7 5V7z" />
-                          <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
-                        </svg>
-                        Show video
+                        Background music
                       </button>
-                    ) : null}
-                    <div
-                      className={`rounded-xl border border-zinc-200 overflow-hidden dark:border-zinc-700 ${
-                        floatVideos && !floatingVideoMinimized ? "fixed z-50 shadow-xl floating-video-panel mt-0" : "mt-4"
-                      }`}
-                      style={
-                        floatVideos && !floatingVideoMinimized
-                          ? {
-                              width: floatingVideoSize?.w ?? 420,
-                              height: floatingVideoSize?.h ?? 280,
-                              minWidth: 280,
-                              minHeight: 200,
-                              left:
-                                floatingVideoPosition?.x ??
-                                (typeof window !== "undefined"
-                                  ? Math.max(16, window.innerWidth - (floatingVideoSize?.w ?? 420) - 16)
-                                  : 16),
-                              top: floatingVideoPosition?.y ?? 96,
-                            }
-                          : undefined
-                      }
-                    >
-                      {floatVideos && !floatingVideoMinimized && (
-                        <div
-                          className="absolute left-0 right-0 top-0 z-20 flex h-7 cursor-grab items-center justify-between border-b border-zinc-200/80 bg-zinc-100/90 px-2 transition-colors hover:bg-zinc-200/80 active:cursor-grabbing rounded-t-xl dark:border-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700"
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            const startX = e.clientX;
-                            const startY = e.clientY;
-                            const startLeft = floatingVideoPosition?.x ?? Math.max(16, window.innerWidth - (floatingVideoSize?.w ?? 420) - 16);
-                            const startTop = floatingVideoPosition?.y ?? 96;
-                            const lastPos = { x: startLeft, y: startTop };
-                            const onMove = (e2: MouseEvent) => {
-                              const dx = e2.clientX - startX;
-                              const dy = e2.clientY - startY;
-                              const w = floatingVideoSize?.w ?? 420;
-                              const newX = Math.max(0, Math.min(window.innerWidth - w, startLeft + dx));
-                              const newY = Math.max(0, Math.min(window.innerHeight - 48, startTop + dy));
-                              lastPos.x = newX;
-                              lastPos.y = newY;
-                              setFloatingVideoPosition({ x: newX, y: newY });
-                            };
-                            const onUp = () => {
-                              document.removeEventListener("mousemove", onMove);
-                              document.removeEventListener("mouseup", onUp);
-                              try {
-                                localStorage.setItem("aynfrp:floatVideoPos", JSON.stringify(lastPos));
-                              } catch (_) {}
-                            };
-                            document.addEventListener("mousemove", onMove);
-                            document.addEventListener("mouseup", onUp);
-                          }}
-                          title="Drag to move"
-                        >
-                          <span className="text-[10px] font-medium text-zinc-500 select-none dark:text-zinc-400">⋮⋮</span>
-                          <button
-                            type="button"
-                            className="rounded p-1 text-zinc-500 hover:bg-zinc-300/80 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-600 dark:hover:text-zinc-100"
-                            onClick={() => setFloatingVideoMinimized(true)}
-                            title="Minimize video"
-                            aria-label="Minimize video"
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M18 15l-6-6-6 6" />
-                            </svg>
-                          </button>
-                        </div>
-                      )}
-                      {floatVideos && !floatingVideoMinimized && (
-                        <div
-                          className="absolute left-0 top-7 z-10 h-[calc(100%-1.75rem)] w-2 cursor-ew-resize bg-zinc-300/50 opacity-0 transition-opacity hover:opacity-100"
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            const startX = e.clientX;
-                            const startW = floatingVideoSize?.w ?? 420;
-                            const onMove = (e2: MouseEvent) => {
-                              const dx = startX - e2.clientX;
-                              const newW = Math.max(280, Math.min(window.innerWidth - 32, startW + dx));
-                              setFloatingVideoSize((s) => ({ ...s, w: newW, h: s?.h ?? 280 }));
-                            };
-                            const onUp = () => {
-                              document.removeEventListener("mousemove", onMove);
-                              document.removeEventListener("mouseup", onUp);
-                            };
-                            document.addEventListener("mousemove", onMove);
-                            document.addEventListener("mouseup", onUp);
-                          }}
-                          title="Drag to resize"
-                        />
-                      )}
-                      {floatVideos && !floatingVideoMinimized && (
-                        <div
-                          className="absolute bottom-0 left-0 right-0 z-10 h-2 cursor-ns-resize bg-zinc-300/50 opacity-0 transition-opacity hover:opacity-100"
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            const startY = e.clientY;
-                            const startH = floatingVideoSize?.h ?? 280;
-                            const onMove = (e2: MouseEvent) => {
-                              const dy = e2.clientY - startY;
-                              const newH = Math.max(200, Math.min(window.innerHeight - 100, startH + dy));
-                              setFloatingVideoSize((s) => ({ ...s, w: s?.w ?? 420, h: newH }));
-                            };
-                            const onUp = () => {
-                              document.removeEventListener("mousemove", onMove);
-                              document.removeEventListener("mouseup", onUp);
-                            };
-                            document.addEventListener("mousemove", onMove);
-                            document.addEventListener("mouseup", onUp);
-                          }}
-                          title="Drag to resize height"
-                        />
-                      )}
-                      {callToken ? (
-                        <div className={`w-full h-full bg-zinc-100 ${floatVideos ? "pt-7" : ""} ${!floatVideos ? "h-[70vh] min-h-[520px]" : ""}`} style={floatVideos ? { minHeight: 200 } : undefined}>
-                          <LiveKitRoom
-                            token={callToken}
-                            serverUrl={LIVEKIT_URL}
-                            connect
-                            video
-                            audio
-                            data-lk-theme="default"
-                            options={{ adaptiveStream: true, dynacast: true }}
-                            className="call-room h-full w-full"
-                            onConnected={() => setCallFrameReady(true)}
-                            onDisconnected={() => void handleQuitCall()}
-                            onError={(liveKitError) => setCallError(liveKitError.message)}
-                          >
-                            <VoiceRuntimeControls
-                              mode={audioMode}
-                              pttKeyCode={pttKeyCode}
-                              noiseThreshold={noiseThreshold}
-                            />
-                            {floatVideos ? <FloatingVideoConference /> : <VideoConference />}
-                          </LiveKitRoom>
-                        </div>
-                      ) : (
-                        <div className={`flex items-center justify-center text-sm text-zinc-500 ${floatVideos ? "min-h-[200px]" : "h-[70vh] min-h-[520px]"}`}>
-                          Connecting to room {callRoomName}...
-                        </div>
-                      )}
-                    </div>
-                    <div className="mt-4">
-                      <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500">
-                        In call now
-                      </h3>
-                      <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                        {callParticipants.length === 0 ? (
-                          <p className="text-xs text-zinc-500">No one has joined the call yet.</p>
-                        ) : (
-                          callParticipants.map((person) => (
-                            <div
-                              key={person.id}
-                              className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2"
-                            >
-                              {person.camOn ? (
-                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-xs font-semibold text-white">
-                                  Video
-                                </div>
-                              ) : (
-                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-xs font-semibold text-zinc-700">
-                                  {person.name
-                                    .split(" ")
-                                    .map((chunk) => chunk[0])
-                                    .join("")
-                                    .slice(0, 2)
-                                    .toUpperCase()}
-                                </div>
-                              )}
-                              <div className="min-w-0">
-                                <p className="truncate text-xs font-semibold">{person.name}</p>
-                                <p className="text-[11px] text-zinc-500">
-                                  {person.camOn ? "Camera on" : "Camera off"} •{" "}
-                                  {person.micOn ? "Mic on" : "Mic off"}
-                                </p>
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </>
+                    )}
+                    {callFrameReady ? (
+                      <span className="rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-semibold text-emerald-700">
+                        Connected
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-amber-100 px-3 py-1 text-[11px] font-semibold text-amber-700">
+                        Connecting...
+                      </span>
+                    )}
+                  </div>
                 ) : null}
               </div>
             )}
+            {callToken ? (
+              <>
+                {floatVideos && floatingVideoMinimized ? (
+                  <button
+                    type="button"
+                    className="fixed bottom-4 right-24 z-50 flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-4 py-2 text-xs font-semibold text-zinc-700 shadow-lg hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                    onClick={() => setFloatingVideoMinimized(false)}
+                    title="Show video"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M23 7l-7 5 7 5V7z" />
+                      <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+                    </svg>
+                    Show video
+                  </button>
+                ) : null}
+                <div
+                  className={`rounded-xl border border-zinc-200 overflow-hidden dark:border-zinc-700 ${
+                    floatVideos && !floatingVideoMinimized ? "fixed z-50 shadow-xl floating-video-panel mt-0" : "mt-4"
+                  }`}
+                  style={
+                    floatVideos && !floatingVideoMinimized
+                      ? {
+                          width: floatingVideoSize?.w ?? 420,
+                          height: floatingVideoSize?.h ?? 280,
+                          minWidth: 280,
+                          minHeight: 200,
+                          left:
+                            floatingVideoPosition?.x ??
+                            (typeof window !== "undefined"
+                              ? Math.max(16, window.innerWidth - (floatingVideoSize?.w ?? 420) - 16)
+                              : 16),
+                          top: floatingVideoPosition?.y ?? 96,
+                        }
+                      : undefined
+                  }
+                >
+                  {floatVideos && !floatingVideoMinimized && (
+                    <div
+                      className="absolute left-0 right-0 top-0 z-20 flex h-7 cursor-grab items-center justify-between border-b border-zinc-200/80 bg-zinc-100/90 px-2 transition-colors hover:bg-zinc-200/80 active:cursor-grabbing rounded-t-xl dark:border-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        const startX = e.clientX;
+                        const startY = e.clientY;
+                        const startLeft = floatingVideoPosition?.x ?? Math.max(16, window.innerWidth - (floatingVideoSize?.w ?? 420) - 16);
+                        const startTop = floatingVideoPosition?.y ?? 96;
+                        const lastPos = { x: startLeft, y: startTop };
+                        const onMove = (e2: MouseEvent) => {
+                          const dx = e2.clientX - startX;
+                          const dy = e2.clientY - startY;
+                          const w = floatingVideoSize?.w ?? 420;
+                          const newX = Math.max(0, Math.min(window.innerWidth - w, startLeft + dx));
+                          const newY = Math.max(0, Math.min(window.innerHeight - 48, startTop + dy));
+                          lastPos.x = newX;
+                          lastPos.y = newY;
+                          setFloatingVideoPosition({ x: newX, y: newY });
+                        };
+                        const onUp = () => {
+                          document.removeEventListener("mousemove", onMove);
+                          document.removeEventListener("mouseup", onUp);
+                          try {
+                            localStorage.setItem("aynfrp:floatVideoPos", JSON.stringify(lastPos));
+                          } catch (_) {}
+                        };
+                        document.addEventListener("mousemove", onMove);
+                        document.addEventListener("mouseup", onUp);
+                      }}
+                      title="Drag to move"
+                    >
+                      <span className="text-[10px] font-medium text-zinc-500 select-none dark:text-zinc-400">⋮⋮</span>
+                      <button
+                        type="button"
+                        className="rounded p-1 text-zinc-500 hover:bg-zinc-300/80 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-600 dark:hover:text-zinc-100"
+                        onClick={() => setFloatingVideoMinimized(true)}
+                        title="Minimize video"
+                        aria-label="Minimize video"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M18 15l-6-6-6 6" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+                  {floatVideos && !floatingVideoMinimized && (
+                    <div
+                      className="absolute left-0 top-7 z-10 h-[calc(100%-1.75rem)] w-2 cursor-ew-resize bg-zinc-300/50 opacity-0 transition-opacity hover:opacity-100"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        const startX = e.clientX;
+                        const startW = floatingVideoSize?.w ?? 420;
+                        const onMove = (e2: MouseEvent) => {
+                          const dx = startX - e2.clientX;
+                          const newW = Math.max(280, Math.min(window.innerWidth - 32, startW + dx));
+                          setFloatingVideoSize((s) => ({ ...s, w: newW, h: s?.h ?? 280 }));
+                        };
+                        const onUp = () => {
+                          document.removeEventListener("mousemove", onMove);
+                          document.removeEventListener("mouseup", onUp);
+                        };
+                        document.addEventListener("mousemove", onMove);
+                        document.addEventListener("mouseup", onUp);
+                      }}
+                      title="Drag to resize"
+                    />
+                  )}
+                  {floatVideos && !floatingVideoMinimized && (
+                    <div
+                      className="absolute bottom-0 left-0 right-0 z-10 h-2 cursor-ns-resize bg-zinc-300/50 opacity-0 transition-opacity hover:opacity-100"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        const startY = e.clientY;
+                        const startH = floatingVideoSize?.h ?? 280;
+                        const onMove = (e2: MouseEvent) => {
+                          const dy = e2.clientY - startY;
+                          const newH = Math.max(200, Math.min(window.innerHeight - 100, startH + dy));
+                          setFloatingVideoSize((s) => ({ ...s, w: s?.w ?? 420, h: newH }));
+                        };
+                        const onUp = () => {
+                          document.removeEventListener("mousemove", onMove);
+                          document.removeEventListener("mouseup", onUp);
+                        };
+                        document.addEventListener("mousemove", onMove);
+                        document.addEventListener("mouseup", onUp);
+                      }}
+                      title="Drag to resize height"
+                    />
+                  )}
+                  <div className={`w-full h-full bg-zinc-100 dark:bg-zinc-900 ${floatVideos ? "pt-7" : ""} ${!floatVideos ? "h-[70vh] min-h-[520px]" : ""}`} style={floatVideos ? { minHeight: 200 } : undefined}>
+                    <LiveKitRoom
+                      token={callToken}
+                      serverUrl={LIVEKIT_URL}
+                      connect
+                      video
+                      audio
+                      data-lk-theme="default"
+                      options={{ adaptiveStream: true, dynacast: true }}
+                      className="call-room h-full w-full"
+                      onConnected={() => setCallFrameReady(true)}
+                      onDisconnected={() => void handleQuitCall()}
+                      onError={(liveKitError) => setCallError(liveKitError.message)}
+                    >
+                      <VoiceRuntimeControls
+                        mode={audioMode}
+                        pttKeyCode={pttKeyCode}
+                        noiseThreshold={noiseThreshold}
+                      />
+                      {floatVideos ? <FloatingVideoConference /> : <VideoConference />}
+                    </LiveKitRoom>
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <h3 className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500">
+                    In call now
+                  </h3>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {callParticipants.length === 0 ? (
+                      <p className="text-xs text-zinc-500">No one has joined the call yet.</p>
+                    ) : (
+                      callParticipants.map((person) => (
+                        <div
+                          key={person.id}
+                          className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-800"
+                        >
+                          {person.camOn ? (
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-xs font-semibold text-white">
+                              Video
+                            </div>
+                          ) : (
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-xs font-semibold text-zinc-700">
+                              {person.name
+                                .split(" ")
+                                .map((chunk) => chunk[0])
+                                .join("")
+                                .slice(0, 2)
+                                .toUpperCase()}
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-semibold">{person.name}</p>
+                            <p className="text-[11px] text-zinc-500">
+                              {person.camOn ? "Camera on" : "Camera off"} •{" "}
+                              {person.micOn ? "Mic on" : "Mic off"}
+                            </p>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </>
+            ) : null}
           </div>
         </section>
 
@@ -2512,28 +2505,6 @@ export default function RoomPage() {
                 )}
               </div>
             </div>
-            </div>
-
-            <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-              <h2 className="text-lg font-semibold">Recap</h2>
-              <p className="text-sm text-zinc-500">Capture a short recap after the session.</p>
-              <textarea
-                className="mt-3 w-full rounded-lg border border-zinc-200 p-3 text-sm"
-                rows={4}
-                value={recapText}
-                onChange={(event) => setRecapText(event.target.value)}
-              />
-              {recapError ? <p className="mt-2 text-xs text-amber-600">{recapError}</p> : null}
-              {canManageSession ? (
-                <button
-                  className="mt-3 rounded-full bg-zinc-900 px-4 py-2 text-xs font-semibold text-white"
-                  onClick={saveRecap}
-                >
-                  Save recap
-                </button>
-              ) : (
-                <p className="mt-2 text-xs text-zinc-500">Only GM/admin can save recap.</p>
-              )}
             </div>
           </div>
 
