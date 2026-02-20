@@ -9,6 +9,7 @@ import { FloatingVideoConference } from "@/components/FloatingVideoConference";
 import { MusicPlayer } from "@/components/MusicPlayer";
 import "@livekit/components-styles";
 import { Track } from "livekit-client";
+import { animate } from "animejs";
 import { buildVideoChannelRoomName, buildVideoRoomName } from "@/lib/video-room";
 
 type ApiResponse<T> = {
@@ -171,20 +172,57 @@ function TumblingDie({
   isRevealing: boolean;
   colorClass: string;
 }) {
+  const dieRef = useRef<HTMLSpanElement | null>(null);
   const [display, setDisplay] = useState(finalValue);
   useEffect(() => {
+    const node = dieRef.current;
+    if (!node) return;
+
+    let tumbleInterval: ReturnType<typeof setInterval> | null = null;
+    let motionAnimation: ReturnType<typeof animate> | null = null;
+
     if (isRevealing) {
-      setDisplay(finalValue);
-      return;
+      motionAnimation = animate(node, {
+        scale: [0.4, 1.16, 0.96, 1],
+        rotate: [-14, 8, -3, 0],
+        opacity: [0, 1],
+        duration: 520,
+        ease: "outBack",
+        onBegin: () => {
+          setDisplay(finalValue);
+        },
+      });
+    } else {
+      tumbleInterval = setInterval(() => {
+        setDisplay((prev) => (prev % sides) + 1);
+      }, 60 + Math.random() * 40);
+
+      motionAnimation = animate(node, {
+        keyframes: [
+          { x: -2, y: 2, rotate: -8, duration: 55 },
+          { x: 2, y: -2, rotate: 8, duration: 55 },
+          { x: -2, y: -2, rotate: -6, duration: 55 },
+          { x: 2, y: 2, rotate: 6, duration: 55 },
+          { x: -1, y: 1, rotate: -4, duration: 55 },
+          { x: 0, y: 0, rotate: 0, duration: 55 },
+        ],
+        ease: "inOutSine",
+        loop: true,
+      });
     }
-    const id = setInterval(() => {
-      setDisplay((prev) => (prev % sides) + 1);
-    }, 60 + Math.random() * 40);
-    return () => clearInterval(id);
+
+    return () => {
+      if (tumbleInterval) clearInterval(tumbleInterval);
+      motionAnimation?.cancel();
+      node.style.transform = "";
+      node.style.opacity = "";
+    };
   }, [sides, finalValue, isRevealing]);
+
   return (
     <span
-      className={`inline-flex h-12 w-12 items-center justify-center text-xl font-bold tabular-nums shadow-md transition-all ${diceShapeClass(sides)} ${colorClass} ${isRevealing ? "animate-dice-reveal-pop" : "animate-dice-shake"}`}
+      ref={dieRef}
+      className={`inline-flex h-12 w-12 items-center justify-center text-xl font-bold tabular-nums shadow-md transition-all ${diceShapeClass(sides)} ${colorClass}`}
     >
       {display}
     </span>
