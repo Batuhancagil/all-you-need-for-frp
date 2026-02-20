@@ -3,11 +3,23 @@ import { ok, fail } from "@/server/api";
 import { prisma } from "@/server/db";
 import { mapParticipantRole, mapSessionState } from "@/server/room-mappers";
 
+const CALL_STALE_MS = 3 * 60 * 1000;
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ roomId: string }> }
 ) {
   const { roomId } = await params;
+
+  await prisma.participant.updateMany({
+    where: {
+      roomId,
+      inCall: true,
+      lastSeen: { lt: new Date(Date.now() - CALL_STALE_MS) },
+    },
+    data: { inCall: false, micOn: false, camOn: false, callChannelSlug: null },
+  });
+
   const room = await prisma.room.findUnique({
     where: { id: roomId },
     select: {

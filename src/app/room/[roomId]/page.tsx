@@ -223,6 +223,24 @@ function TumblingDie({
   );
 }
 
+function DieChip({ sides, value, size = "sm" }: { sides: number; value: number; size?: "sm" | "md" }) {
+  const dim = size === "md" ? "h-8 w-8" : "h-7 w-7";
+  const txt = size === "md" ? "text-sm font-bold" : "text-xs font-bold";
+  return (
+    <span className="die-wrap">
+      <span className="die-shape-outer">
+        <span
+          className={`inline-flex ${dim} items-center justify-center ${txt} tabular-nums ${diceShapeClass(sides)} ${diceColor(value, sides)}`}
+          title={`d${sides}`}
+        >
+          {value}
+        </span>
+      </span>
+      <span className="die-label">d{sides}</span>
+    </span>
+  );
+}
+
 function AnimatedSwitch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   const knobRef = useRef<HTMLSpanElement>(null);
 
@@ -1452,18 +1470,38 @@ export default function RoomPage() {
   }
 
   useEffect(() => {
+    const leavePayload = JSON.stringify({
+      participantId,
+      inCall: false,
+      micOn: false,
+      camOn: false,
+      channelSlug: null,
+    });
+
+    const handleBeforeUnload = () => {
+      if (!participantId) return;
+      const url = `/api/rooms/${roomId}/call`;
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(url, new Blob([leavePayload], { type: "application/json" }));
+      } else {
+        void fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: leavePayload,
+          keepalive: true,
+        }).catch(() => null);
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
     return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
       if (!participantId) return;
       void fetch(`/api/rooms/${roomId}/call`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          participantId,
-          inCall: false,
-          micOn: false,
-          camOn: false,
-          channelSlug: null,
-        }),
+        body: leavePayload,
       }).catch(() => null);
     };
   }, [participantId, roomId]);
@@ -1901,12 +1939,7 @@ export default function RoomPage() {
                             </p>
                             <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                               {termSides.map((sides, i) => (
-                                <span
-                                  key={i}
-                                  className={`inline-flex h-8 w-8 shrink-0 items-center justify-center text-sm font-bold shadow-sm ${diceShapeClass(sides)} ${diceColor(roll.results[i] ?? 0, sides)}`}
-                                >
-                                  {roll.results[i]}
-                                </span>
+                                <DieChip key={i} sides={sides} value={roll.results[i] ?? 0} size="md" />
                               ))}
                               <span className="shrink-0 text-lg font-bold tabular-nums text-zinc-800">
                                 {roll.total}
@@ -2428,13 +2461,7 @@ export default function RoomPage() {
                             {(e.results?.length ?? 0) > 0 ? (
                               <>
                                 {parseExpressionSides(e.expression).map((sides, idx) => (
-                                  <span
-                                    key={idx}
-                                    className={`inline-flex h-7 w-7 shrink-0 items-center justify-center font-mono text-sm font-bold tabular-nums shadow-sm ${diceShapeClass(sides)} ${diceColor(e.results![idx] ?? 0, sides)}`}
-                                    title={`d${sides}`}
-                                  >
-                                    {e.results![idx] ?? "?"}
-                                  </span>
+                                  <DieChip key={idx} sides={sides} value={e.results![idx] ?? 0} />
                                 ))}
                                 <span className="font-mono text-sm font-bold tabular-nums text-amber-900">
                                   = {e.result}
@@ -2492,15 +2519,9 @@ export default function RoomPage() {
                   <p className="mt-1 text-4xl font-bold tabular-nums text-amber-900">
                     {lastRoll.total}
                   </p>
-                  <p className="mt-1 flex flex-wrap justify-center gap-1 text-sm">
+                  <p className="mt-1 flex flex-wrap justify-center gap-2 text-sm">
                     {getTermSides(lastRoll).map((sides, i) => (
-                      <span
-                        key={i}
-                        className={`inline-flex h-8 w-8 items-center justify-center font-bold tabular-nums shadow-sm ${diceShapeClass(sides)} ${diceColor(lastRoll.results[i] ?? 0, sides)}`}
-                        title={`d${sides}`}
-                      >
-                        {lastRoll.results[i]}
-                      </span>
+                      <DieChip key={i} sides={sides} value={lastRoll.results[i] ?? 0} size="md" />
                     ))}
                   </p>
                 </div>
@@ -2642,12 +2663,7 @@ export default function RoomPage() {
                         </p>
                         <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
                           {termSides.map((sides, i) => (
-                            <span
-                              key={i}
-                              className={`inline-flex h-7 w-7 shrink-0 items-center justify-center text-xs font-bold shadow-sm ${diceShapeClass(sides)} ${diceColor(roll.results[i] ?? 0, sides)}`}
-                            >
-                              {roll.results[i]}
-                            </span>
+                            <DieChip key={i} sides={sides} value={roll.results[i] ?? 0} />
                           ))}
                           <span className="shrink-0 text-base font-bold tabular-nums text-zinc-800">
                             {roll.total}
