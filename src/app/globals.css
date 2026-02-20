@@ -167,3 +167,17 @@ body {
 .dice-shape-d12 { aspect-ratio: 1; clip-path: polygon(50% 0%, 90% 20%, 90% 80%, 50% 100%, 10% 80%, 10% 20%); } /* ⬡ hexagon */
 .dice-shape-d20 { aspect-ratio: 1; clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%); } /* ⬢ hex flat */
 .dice-shape-d100 { aspect-ratio: 1; clip-path: circle(50%); } /* ○ circle */
+
+/* Slightly offset outer line to make dice results panel stand out. */
+.dice-results-box {
+  position: relative;
+}
+
+.dice-results-box::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border: 1px solid rgba(217, 119, 6, 0.35);
+  border-radius: 1rem;
+  pointer-events: none;
+}

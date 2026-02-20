@@ -9,6 +9,7 @@ import { FloatingVideoConference } from "@/components/FloatingVideoConference";
 import { MusicPlayer } from "@/components/MusicPlayer";
 import "@livekit/components-styles";
 import { Track } from "livekit-client";
+import { animate } from "animejs";
 import { buildVideoChannelRoomName, buildVideoRoomName } from "@/lib/video-room";
 
 type ApiResponse<T> = {
@@ -172,21 +173,52 @@ function TumblingDie({
   colorClass: string;
 }) {
   const [display, setDisplay] = useState(finalValue);
+  const dieRef = useRef<HTMLSpanElement | null>(null);
+
   useEffect(() => {
-    if (isRevealing) {
-      setDisplay(finalValue);
-      return;
-    }
+    if (isRevealing) return;
     const id = setInterval(() => {
       setDisplay((prev) => (prev % sides) + 1);
     }, 60 + Math.random() * 40);
     return () => clearInterval(id);
-  }, [sides, finalValue, isRevealing]);
+  }, [sides, isRevealing]);
+
+  useEffect(() => {
+    const node = dieRef.current;
+    if (!node) return;
+
+    if (isRevealing) {
+      const reveal = animate(node, {
+        scale: [0.35, 1.18, 0.94, 1],
+        rotate: [-8, 6, -2, 0],
+        duration: 520,
+        ease: "out(3)",
+      });
+      return () => {
+        reveal.pause();
+      };
+    }
+
+    const tumble = animate(node, {
+      x: [-3, 3, -2, 2, 0],
+      y: [2, -2, -3, 3, 0],
+      rotate: [-8, 7, -5, 6, 0],
+      duration: 280,
+      ease: "inOutSine",
+      loop: true,
+    });
+    return () => {
+      tumble.pause();
+      node.style.transform = "";
+    };
+  }, [isRevealing, finalValue]);
+
   return (
     <span
-      className={`inline-flex h-12 w-12 items-center justify-center text-xl font-bold tabular-nums shadow-md transition-all ${diceShapeClass(sides)} ${colorClass} ${isRevealing ? "animate-dice-reveal-pop" : "animate-dice-shake"}`}
+      ref={dieRef}
+      className={`inline-flex h-12 w-12 items-center justify-center text-xl font-bold tabular-nums shadow-md transition-all ${diceShapeClass(sides)} ${colorClass}`}
     >
-      {display}
+      {isRevealing ? finalValue : display}
     </span>
   );
 }
@@ -2345,7 +2377,7 @@ export default function RoomPage() {
                 </p>
               ) : null}
               {lastRoll ? (
-                <div className="mt-4 rounded-xl border-2 border-amber-200 bg-amber-50 p-4 text-center">
+                <div className="dice-results-box mt-4 rounded-xl border-2 border-amber-200 bg-amber-50 p-4 text-center">
                   <p className="text-xs font-medium text-amber-800">{lastRoll.participantName}</p>
                   <p className="mt-1 text-4xl font-bold tabular-nums text-amber-900">
                     {lastRoll.total}
