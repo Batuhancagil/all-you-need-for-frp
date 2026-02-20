@@ -51,6 +51,17 @@ body {
   max-height: none !important;
   min-height: var(--lk-control-bar-height) !important;
 }
+.floating-video-panel .lk-button,
+.floating-video-panel .lk-disconnect-button,
+.floating-video-panel .lk-chat-toggle {
+  padding: 0.25rem 0.5rem !important;
+  min-width: auto !important;
+  font-size: 0.7rem !important;
+}
+.floating-video-panel .lk-button-group .lk-button {
+  padding: 0.25rem 0.375rem !important;
+}
+
 .floating-video-panel:hover .lk-control-bar {
   opacity: 1 !important;
 }

@@ -223,6 +223,129 @@ function TumblingDie({
   );
 }
 
+function AnimatedSwitch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  const knobRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (knobRef.current) {
+      animate(knobRef.current, {
+        x: checked ? 16 : 0,
+        duration: 220,
+        ease: "out(3)",
+      });
+    }
+  }, [checked]);
+
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+        checked ? "bg-amber-500" : "bg-zinc-300 dark:bg-zinc-600"
+      }`}
+    >
+      <span
+        ref={knobRef}
+        className="inline-block h-4 w-4 rounded-full bg-white shadow-sm"
+        style={{ marginLeft: 2 }}
+      />
+    </button>
+  );
+}
+
+function MinimizedCallBar({ onExpand }: { onExpand: () => void }) {
+  const { localParticipant } = useLocalParticipant();
+  const barRef = useRef<HTMLDivElement>(null);
+
+  const micEnabled = localParticipant.isMicrophoneEnabled;
+  const camEnabled = localParticipant.isCameraEnabled;
+
+  useEffect(() => {
+    if (barRef.current) {
+      animate(barRef.current, {
+        scale: [0.85, 1],
+        opacity: [0, 1],
+        duration: 280,
+        ease: "out(3)",
+      });
+    }
+  }, []);
+
+  return (
+    <div
+      ref={barRef}
+      className="fixed bottom-4 right-4 z-50 flex items-center gap-1 rounded-full border border-zinc-200 bg-white/95 px-1.5 py-1 shadow-lg backdrop-blur dark:border-zinc-700 dark:bg-zinc-900/95"
+    >
+      <button
+        type="button"
+        onClick={() => localParticipant.setMicrophoneEnabled(!micEnabled)}
+        className={`rounded-full p-2 transition ${
+          micEnabled
+            ? "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            : "bg-rose-100 text-rose-600 dark:bg-rose-900/40 dark:text-rose-400"
+        }`}
+        title={micEnabled ? "Mute mic" : "Unmute mic"}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          {micEnabled ? (
+            <>
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+              <line x1="12" y1="19" x2="12" y2="23" />
+              <line x1="8" y1="23" x2="16" y2="23" />
+            </>
+          ) : (
+            <>
+              <line x1="1" y1="1" x2="23" y2="23" />
+              <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
+              <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2c0 .77-.13 1.53-.36 2.24" />
+              <line x1="12" y1="19" x2="12" y2="23" />
+              <line x1="8" y1="23" x2="16" y2="23" />
+            </>
+          )}
+        </svg>
+      </button>
+      <button
+        type="button"
+        onClick={() => localParticipant.setCameraEnabled(!camEnabled)}
+        className={`rounded-full p-2 transition ${
+          camEnabled
+            ? "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            : "bg-rose-100 text-rose-600 dark:bg-rose-900/40 dark:text-rose-400"
+        }`}
+        title={camEnabled ? "Turn off camera" : "Turn on camera"}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          {camEnabled ? (
+            <>
+              <path d="M23 7l-7 5 7 5V7z" />
+              <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+            </>
+          ) : (
+            <>
+              <path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10" />
+              <line x1="1" y1="1" x2="23" y2="23" />
+            </>
+          )}
+        </svg>
+      </button>
+      <div className="mx-0.5 h-4 w-px bg-zinc-200 dark:bg-zinc-700" />
+      <button
+        type="button"
+        onClick={onExpand}
+        className="rounded-full p-2 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+        title="Expand video"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M6 15l6-6 6 6" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
 const PTT_KEY_OPTIONS = [
   { code: "Space", label: "Space" },
   { code: "KeyV", label: "V" },
@@ -1920,11 +2043,9 @@ export default function RoomPage() {
                 {callJoined ? (
                   <div className="mt-4 flex flex-wrap items-center gap-3">
                     <label className="flex items-center gap-2 text-xs dark:text-zinc-400">
-                      <input
-                        type="checkbox"
+                      <AnimatedSwitch
                         checked={floatVideos}
-                        onChange={(e) => {
-                          const v = e.target.checked;
+                        onChange={(v) => {
                           setFloatVideos(v);
                           setFloatingVideoMinimized(false);
                           localStorage.setItem("aynfrp:floatVideos", v ? "1" : "0");
@@ -1956,23 +2077,9 @@ export default function RoomPage() {
             )}
             {callToken ? (
               <>
-                {floatVideos && floatingVideoMinimized ? (
-                  <button
-                    type="button"
-                    className="fixed bottom-4 right-24 z-50 flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-4 py-2 text-xs font-semibold text-zinc-700 shadow-lg hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
-                    onClick={() => setFloatingVideoMinimized(false)}
-                    title="Show video"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M23 7l-7 5 7 5V7z" />
-                      <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
-                    </svg>
-                    Show video
-                  </button>
-                ) : null}
                 <div
                   className={`rounded-xl border border-zinc-200 overflow-hidden dark:border-zinc-700 ${
-                    floatVideos && !floatingVideoMinimized ? "fixed z-50 shadow-xl floating-video-panel mt-0" : "mt-4"
+                    floatVideos && !floatingVideoMinimized ? "fixed z-50 shadow-xl floating-video-panel mt-0" : floatVideos && floatingVideoMinimized ? "h-0 overflow-hidden mt-0" : "mt-4"
                   }`}
                   style={
                     floatVideos && !floatingVideoMinimized
@@ -2032,7 +2139,7 @@ export default function RoomPage() {
                         aria-label="Minimize video"
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M18 15l-6-6-6 6" />
+                          <path d="M6 9l6 6 6-6" />
                         </svg>
                       </button>
                     </div>
@@ -2061,7 +2168,7 @@ export default function RoomPage() {
                   )}
                   {floatVideos && !floatingVideoMinimized && (
                     <div
-                      className="absolute bottom-0 left-0 right-0 z-10 h-2 cursor-ns-resize bg-zinc-300/50 opacity-0 transition-opacity hover:opacity-100"
+                      className="absolute bottom-0 left-0 right-0 z-40 h-3 cursor-ns-resize bg-zinc-300/50 opacity-0 transition-opacity hover:opacity-100"
                       onMouseDown={(e) => {
                         e.preventDefault();
                         const startY = e.clientY;
@@ -2108,6 +2215,9 @@ export default function RoomPage() {
                         pttKeyCode={pttKeyCode}
                         noiseThreshold={noiseThreshold}
                       />
+                      {floatVideos && floatingVideoMinimized && (
+                        <MinimizedCallBar onExpand={() => setFloatingVideoMinimized(false)} />
+                      )}
                       {floatVideos ? <FloatingVideoConference /> : <VideoConference />}
                     </LiveKitRoom>
                   </div>
