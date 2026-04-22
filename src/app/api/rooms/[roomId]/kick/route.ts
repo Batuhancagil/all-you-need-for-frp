@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { ok, fail } from "@/server/api";
 import { prisma } from "@/server/db";
+import { ensureOnlineAdmin } from "@/server/room-admin";
+import { resolveRoomParticipantAccess } from "@/server/room-participant-session";
 
 export async function POST(
   request: NextRequest,
@@ -11,15 +13,12 @@ export async function POST(
   const requesterId = body?.participantId as string | undefined;
   const targetParticipantId = body?.targetParticipantId as string | undefined;
 
-  if (!requesterId || !targetParticipantId) {
-    return fail("missing_fields", "participantId and targetParticipantId required");
+  if (!targetParticipantId) {
+    return fail("missing_fields", "targetParticipantId required");
   }
 
-  const [requester, room, target] = await Promise.all([
-    prisma.participant.findFirst({
-      where: { id: requesterId, roomId },
-      select: { id: true, role: true },
-    }),
+  const [access, room, target] = await Promise.all([
+    resolveRoomParticipantAccess({ request, roomId, participantId: requesterId }),
     prisma.room.findUnique({
       where: { id: roomId },
       select: { id: true, createdByParticipantId: true },
@@ -30,10 +29,14 @@ export async function POST(
     }),
   ]);
 
-  if (!requester || !room || !target) {
+  if ("error" in access) {
+    return access.error;
+  }
+  if (!room || !target) {
     return fail("participant_not_found", "Participant or room not found", 404);
   }
 
+  const requester = access.participant;
   const isAdmin = requester.role === "ADMIN";
   const isCreator = room.createdByParticipantId === requester.id;
   if (!isAdmin && !isCreator) {
@@ -44,7 +47,17 @@ export async function POST(
     return fail("invalid_target", "Cannot kick yourself");
   }
 
+  const targetWasCreator = room.createdByParticipantId === target.id;
+
   await prisma.participant.delete({ where: { id: target.id } });
+
+  if (targetWasCreator) {
+    await prisma.room.update({
+      where: { id: roomId },
+      data: { createdByParticipantId: null },
+    });
+  }
+  await ensureOnlineAdmin(roomId);
 
   return ok({ kicked: target.id });
 }

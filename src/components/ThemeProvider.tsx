@@ -19,25 +19,26 @@ const ThemeContext = createContext<{
 } | null>(null);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>("light");
+  const [theme, setThemeState] = useState<Theme>(() => {
+    if (typeof window === "undefined") {
+      return "light";
+    }
+    const stored = localStorage.getItem(STORAGE_KEY);
+    return stored === "dark" ? "dark" : "light";
+  });
 
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY) as Theme | null;
-    const preferred = stored ?? "light";
-    setThemeState(preferred);
-    document.documentElement.classList.toggle("dark", preferred === "dark");
-  }, []);
+    document.documentElement.classList.toggle("dark", theme === "dark");
+  }, [theme]);
 
   const setTheme = useCallback((t: Theme) => {
     setThemeState(t);
-    document.documentElement.classList.toggle("dark", t === "dark");
     localStorage.setItem(STORAGE_KEY, t);
   }, []);
 
   const toggleTheme = useCallback(() => {
     setThemeState((prev) => {
       const next = prev === "dark" ? "light" : "dark";
-      document.documentElement.classList.toggle("dark", next === "dark");
       localStorage.setItem(STORAGE_KEY, next);
       return next;
     });

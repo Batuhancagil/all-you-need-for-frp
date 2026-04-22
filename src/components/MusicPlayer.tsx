@@ -29,6 +29,20 @@ interface YTPlayer {
   playVideo: () => void;
   pauseVideo: () => void;
   getPlayerState: () => number;
+  setVolume?: (volume: number) => void;
+  getVolume?: () => number;
+}
+
+const VOLUME_STORAGE_KEY = "aynfrp:musicVolume";
+const DEFAULT_VOLUME = 50;
+
+function readStoredVolume(): number {
+  if (typeof window === "undefined") return DEFAULT_VOLUME;
+  const raw = window.localStorage.getItem(VOLUME_STORAGE_KEY);
+  if (!raw) return DEFAULT_VOLUME;
+  const n = Number.parseInt(raw, 10);
+  if (Number.isNaN(n)) return DEFAULT_VOLUME;
+  return Math.max(0, Math.min(100, n));
 }
 
 type Props = {
@@ -55,6 +69,8 @@ export function MusicPlayer({
   const [playing, setPlaying] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [showVideo, setShowVideo] = useState(false);
+  const [volume, setVolume] = useState<number>(() => readStoredVolume());
+  const volumeRef = useRef<number>(volume);
   const effectiveExpanded = controlledOpen ? true : expanded;
   const effectiveShowVideo = controlledOpen ? true : showVideo;
   const [videoSize, setVideoSize] = useState({ w: 320, h: 180 });
@@ -83,12 +99,17 @@ export function MusicPlayer({
     const initPlayer = () => {
       if (!containerRef.current || !window.YT?.Player) return;
       const yt = window.YT;
-      const player = new yt.Player(containerRef.current, {
+      new yt.Player(containerRef.current, {
         videoId,
         playerVars: { autoplay: 0, loop: 1, playlist: videoId },
         events: {
           onReady: (e) => {
             playerRef.current = e.target;
+            try {
+              e.target.setVolume?.(volumeRef.current);
+            } catch {
+              // ignore
+            }
           },
           onStateChange: (e) => {
             // 1=playing, 2=paused, 0=ended
@@ -111,6 +132,16 @@ export function MusicPlayer({
       playerRef.current = null;
     };
   }, [videoId]);
+
+  useEffect(() => {
+    volumeRef.current = volume;
+    try {
+      window.localStorage.setItem(VOLUME_STORAGE_KEY, String(volume));
+    } catch {
+      // ignore
+    }
+    playerRef.current?.setVolume?.(volume);
+  }, [volume]);
 
   const togglePlay = useCallback(() => {
     const p = playerRef.current;
@@ -244,6 +275,35 @@ export function MusicPlayer({
 
         {effectiveExpanded && (
           <>
+            {hasMusic && (
+              <label className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                  <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                </svg>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={volume}
+                  onChange={(e) => setVolume(Number.parseInt(e.target.value, 10))}
+                  className="flex-1"
+                  aria-label="Music volume"
+                />
+                <span className="w-8 text-right tabular-nums">{volume}%</span>
+              </label>
+            )}
             {hasMusic && !controlledOpen && (
               <label className="flex items-center gap-2 text-xs dark:text-zinc-400">
                 <input

@@ -15,6 +15,8 @@ model User {
   image         String?
   accounts      Account[]
   sessions      Session[]
+  participants  Participant[]
+  characterSheets CharacterSheet[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
@@ -77,6 +79,11 @@ enum ChannelType {
   DICE
 }
 
+enum RoomType {
+  TTRPG
+  DOCUMENT
+}
+
 model AdminSettings {
   id             String       @id @default("singleton")
   roomNamePrefix String?
@@ -87,6 +94,7 @@ model AdminSettings {
 model Room {
   id               String        @id @default(cuid())
   name             String
+  type             RoomType      @default(TTRPG)
   privacy          RoomPrivacy   @default(PRIVATE)
   inviteCode       String        @unique
   sessionState     SessionState  @default(WAITING)
@@ -109,11 +117,23 @@ model Room {
   channels           Channel[]
   chatMessages       ChatMessage[]
   initiativeEntries  InitiativeEntry[]
+  characterSheets    CharacterSheet[]
+  document           RoomDocument?
+}
+
+model RoomDocument {
+  id        String   @id @default(cuid())
+  roomId    String   @unique
+  title     String   @default("Untitled")
+  yjsState  Bytes?
+  updatedAt DateTime @updatedAt
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
 }
 
 model Participant {
   id        String          @id @default(cuid())
   roomId    String
+  userId    String?
   name      String
   role      ParticipantRole @default(PLAYER)
   joinedAt  DateTime        @default(now())
@@ -124,11 +144,15 @@ model Participant {
   callChannelSlug String?
 
   room             Room              @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user             User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
   rolls            Roll[]
   chatMessages     ChatMessage[]
   initiativeEntries InitiativeEntry[]
+  characterSheet   CharacterSheet?
 
   gmRoom Room? @relation("RoomGm")
+
+  @@index([roomId, userId])
 }
 
 model Roll {
@@ -169,7 +193,8 @@ model ChatMessage {
   roomId        String
   channelId     String
   participantId String
-  content       String
+  content       String?
+  imageDataUrl  String?
   createdAt     DateTime @default(now())
 
   room        Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
@@ -195,5 +220,22 @@ model InitiativeEntry {
   participant       Participant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
   currentTurnRoom   Room?       @relation("InitiativeCurrentTurn")
 
+  @@index([roomId])
+}
+
+model CharacterSheet {
+  id            String   @id @default(cuid())
+  roomId        String
+  userId        String
+  participantId String?  @unique
+  data          Json
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  room        Room         @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  participant Participant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+
+  @@unique([roomId, userId])
   @@index([roomId])
 }

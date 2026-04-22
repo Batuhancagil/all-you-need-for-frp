@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/server/db";
+import { mapParticipantRole } from "@/server/room-mappers";
 
 export const runtime = "nodejs";
 
@@ -54,16 +55,12 @@ export async function GET(
             const payload = nextMessages.map((message: (typeof nextMessages)[number]) => ({
               id: message.id,
               content: message.content,
+              imageDataUrl: message.imageDataUrl,
               createdAt: message.createdAt.toISOString(),
               participant: {
                 id: message.participant.id,
                 name: message.participant.name,
-                role:
-                  message.participant.role === "ADMIN"
-                    ? "admin"
-                    : message.participant.role === "GM"
-                      ? "gm"
-                      : "player",
+                role: mapParticipantRole(message.participant.role),
               },
             }));
 

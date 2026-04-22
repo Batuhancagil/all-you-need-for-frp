@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { ok, fail } from "@/server/api";
 import { prisma } from "@/server/db";
+import { resolveRoomParticipantAccess } from "@/server/room-participant-session";
 
 export async function POST(
   request: NextRequest,
@@ -10,22 +11,21 @@ export async function POST(
   const body = await request.json().catch(() => null);
   const participantId = body?.participantId as string | undefined;
   const gmParticipantId = body?.gmParticipantId as string | undefined;
-  if (!participantId || !gmParticipantId) {
-    return fail("missing_fields", "participantId and gmParticipantId are required");
+  if (!gmParticipantId) {
+    return fail("missing_fields", "gmParticipantId is required");
   }
 
-  const [requester, roomCheck] = await Promise.all([
-    prisma.participant.findFirst({
-      where: { id: participantId, roomId },
-    }),
+  const [access, roomCheck] = await Promise.all([
+    resolveRoomParticipantAccess({ request, roomId, participantId }),
     prisma.room.findUnique({
       where: { id: roomId },
       select: { createdByParticipantId: true },
     }),
   ]);
-  if (!requester) {
-    return fail("participant_not_found", "Participant not found", 404);
+  if ("error" in access) {
+    return access.error;
   }
+  const requester = access.participant;
   const isAdmin = requester.role === "ADMIN";
   const isRoomCreator = roomCheck?.createdByParticipantId === requester.id;
   if (!isAdmin && !isRoomCreator) {

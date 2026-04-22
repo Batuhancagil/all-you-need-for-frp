@@ -3,6 +3,7 @@ import { AccessToken } from "livekit-server-sdk";
 import { ok, fail } from "@/server/api";
 import { prisma } from "@/server/db";
 import { buildVideoChannelRoomName, buildVideoRoomName } from "@/lib/video-room";
+import { resolveRoomParticipantAccess } from "@/server/room-participant-session";
 
 const LIVEKIT_TOKEN_TTL_SECONDS = 60 * 60 * 12;
 const LIVEKIT_TOKEN_TTL = "12h";
@@ -16,22 +17,17 @@ export async function POST(
   const participantId = body?.participantId as string | undefined;
   const channelSlug = body?.channelSlug as string | undefined;
 
-  if (!participantId) {
-    return fail("missing_fields", "participantId is required");
-  }
-
   const apiKey = process.env.LIVEKIT_API_KEY;
   const apiSecret = process.env.LIVEKIT_API_SECRET;
   if (!apiKey || !apiSecret) {
     return fail("config_missing", "LiveKit server credentials are not configured", 500);
   }
 
-  const participant = await prisma.participant.findFirst({
-    where: { id: participantId, roomId },
-  });
-  if (!participant) {
-    return fail("participant_not_found", "Participant not found", 404);
+  const access = await resolveRoomParticipantAccess({ request, roomId, participantId });
+  if ("error" in access) {
+    return access.error;
   }
+  const participant = access.participant;
 
   const roomName = channelSlug
     ? buildVideoChannelRoomName(roomId, channelSlug)

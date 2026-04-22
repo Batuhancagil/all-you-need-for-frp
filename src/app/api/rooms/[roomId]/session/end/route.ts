@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { ok, fail } from "@/server/api";
 import { prisma } from "@/server/db";
+import { resolveRoomParticipantAccess } from "@/server/room-participant-session";
 import { mapSessionState } from "@/server/room-mappers";
 
 export async function POST(
@@ -10,16 +11,11 @@ export async function POST(
   const { roomId } = await params;
   const body = await request.json().catch(() => null);
   const participantId = body?.participantId as string | undefined;
-  if (!participantId) {
-    return fail("missing_fields", "participantId is required");
+  const access = await resolveRoomParticipantAccess({ request, roomId, participantId });
+  if ("error" in access) {
+    return access.error;
   }
-
-  const participant = await prisma.participant.findFirst({
-    where: { id: participantId, roomId },
-  });
-  if (!participant) {
-    return fail("participant_not_found", "Participant not found", 404);
-  }
+  const participant = access.participant;
   if (participant.role !== "GM" && participant.role !== "ADMIN") {
     return fail("forbidden", "Only GM or admin can end sessions", 403);
   }

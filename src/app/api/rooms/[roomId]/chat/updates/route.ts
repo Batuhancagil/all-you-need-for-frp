@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { ok, fail } from "@/server/api";
 import { prisma } from "@/server/db";
+import { mapParticipantRole } from "@/server/room-mappers";
 
 export async function GET(
   request: NextRequest,
@@ -34,16 +35,12 @@ export async function GET(
       channelId: message.channelId,
       channelSlug: message.channel.slug,
       content: message.content,
+      imageDataUrl: message.imageDataUrl,
       createdAt: message.createdAt.toISOString(),
       participant: {
         id: message.participant.id,
         name: message.participant.name,
-        role:
-          message.participant.role === "ADMIN"
-            ? "admin"
-            : message.participant.role === "GM"
-              ? "gm"
-              : "player",
+        role: mapParticipantRole(message.participant.role),
       },
     })),
   });

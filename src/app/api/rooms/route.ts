@@ -1,5 +1,7 @@
 import { ok, fail } from "@/server/api";
+import { getCurrentUserRecord } from "@/server/current-user";
 import { prisma } from "@/server/db";
+import { attachRoomParticipantSession } from "@/server/room-participant-session";
 import { createUniqueInviteCode } from "@/server/room-utils";
 import { mapPrivacy, mapSessionState } from "@/server/room-mappers";
 import { getDefaultChannels } from "@/server/channel-utils";
@@ -28,6 +30,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
+  const currentUser = await getCurrentUserRecord();
   if (!body) {
     return fail("invalid_body", "Request body must be JSON");
   }
@@ -37,8 +40,10 @@ export async function POST(request: Request) {
     privacy?: "public" | "private";
     adminName?: string;
   };
+  const trimmedRoomName = name?.trim() ?? "";
+  const trimmedAdminName = adminName?.trim() ?? "";
 
-  if (!name || !adminName) {
+  if (!trimmedRoomName || !trimmedAdminName) {
     return fail("missing_fields", "Room name and admin name are required");
   }
 
@@ -50,7 +55,7 @@ export async function POST(request: Request) {
 
   const room = await prisma.room.create({
     data: {
-      name: `${resolvedPrefix}${name}`.trim(),
+      name: `${resolvedPrefix}${trimmedRoomName}`.trim(),
       privacy: resolvedPrivacy,
       inviteCode,
     },
@@ -58,14 +63,17 @@ export async function POST(request: Request) {
   const adminParticipant = await prisma.participant.create({
     data: {
       roomId: room.id,
-      name: adminName,
+      name: trimmedAdminName,
       role: "ADMIN",
+      userId: currentUser?.id,
     },
   });
   await prisma.room.update({
     where: { id: room.id },
     data: { createdByParticipantId: adminParticipant.id },
   });
+
+  // Every room ships with the full toolkit: channels (chat/voice/dice) and a shared document.
   await prisma.channel.createMany({
     data: getDefaultChannels().map((channel: ReturnType<typeof getDefaultChannels>[number]) => ({
       roomId: room.id,
@@ -74,8 +82,14 @@ export async function POST(request: Request) {
       type: channel.type,
     })),
   });
+  await prisma.roomDocument.create({
+    data: {
+      roomId: room.id,
+      title: trimmedRoomName,
+    },
+  });
 
-  return ok({
+  const response = ok({
     roomId: room.id,
     inviteCode: room.inviteCode,
     room: {
@@ -89,5 +103,9 @@ export async function POST(request: Request) {
       recap: room.recap ?? null,
     },
     adminParticipantId: adminParticipant.id,
+  });
+  return attachRoomParticipantSession(response, {
+    roomId: room.id,
+    participantId: adminParticipant.id,
   });
 }

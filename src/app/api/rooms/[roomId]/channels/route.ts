@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { ChannelType } from "@prisma/client";
 import { ok, fail } from "@/server/api";
 import { prisma } from "@/server/db";
+import { resolveRoomParticipantAccess } from "@/server/room-participant-session";
 import { getDefaultChannels, sanitizeChannelSlug } from "@/server/channel-utils";
 
 export async function GET(
@@ -70,28 +71,26 @@ export async function POST(
   const participantId = body?.participantId as string | undefined;
   const name = body?.name as string | undefined;
   const type = body?.type as "text" | "voice" | "dice" | undefined;
+  const trimmedName = name?.trim() ?? "";
 
-  if (!participantId || !name || !type) {
-    return fail("missing_fields", "participantId, name and type are required");
+  if (!trimmedName || !type) {
+    return fail("missing_fields", "name and type are required");
   }
 
-  const requester = await prisma.participant.findFirst({
-    where: { id: participantId, roomId },
-    select: { role: true },
-  });
-  if (!requester) {
-    return fail("participant_not_found", "Participant not found", 404);
+  const access = await resolveRoomParticipantAccess({ request, roomId, participantId });
+  if ("error" in access) {
+    return access.error;
   }
 
   const channelType: ChannelType =
     type === "voice" ? "VOICE" : type === "dice" ? "DICE" : "TEXT";
-  const slug = sanitizeChannelSlug(name);
+  const slug = sanitizeChannelSlug(trimmedName);
 
   try {
     const channel = await prisma.channel.create({
       data: {
         roomId,
-        name: name.trim().slice(0, 60),
+        name: trimmedName.slice(0, 60),
         slug,
         type: channelType,
       },

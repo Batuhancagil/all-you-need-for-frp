@@ -26,63 +26,82 @@ export default function AccountPage() {
   });
 
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-900 dark:bg-zinc-900 dark:text-zinc-100">
-      <main className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-6 py-16">
-        <header>
-          <h1 className="text-3xl font-semibold">Account</h1>
-          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-            Manage your sign-in and quick links.
-          </p>
-        </header>
+    <main className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-3xl flex-col gap-8 px-6 py-12 md:py-16">
+      <header className="flex flex-col gap-2">
+        <span className="app-badge w-fit">Account</span>
+        <h1 className="text-3xl font-semibold tracking-tight">Your account</h1>
+        <p className="text-sm text-[color:var(--foreground-muted)]">
+          Manage your sign-in and jump back into recent sessions.
+        </p>
+      </header>
 
-        <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
-          <h2 className="text-lg font-semibold">Google sign-in</h2>
-          <div className="mt-4 flex flex-col gap-3">
-            {status !== "authenticated" ? (
+      <section className="app-card p-6">
+        <h2 className="text-base font-semibold">Google sign-in</h2>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          {status === "loading" ? (
+            <p className="text-xs text-[color:var(--foreground-muted)]">
+              Checking session…
+            </p>
+          ) : status === "authenticated" ? (
+            <>
+              <p className="app-badge app-badge--success">
+                Signed in as {session?.user?.email ?? "account"}
+              </p>
               <button
-                className="rounded-full bg-zinc-900 px-4 py-2 text-xs font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900"
-                onClick={() => signIn("google", { callbackUrl: "/account" })}
+                type="button"
+                className="app-btn app-btn--ghost"
+                onClick={() => signOut({ callbackUrl: "/account" })}
               >
-                Continue with Google
+                Sign out
               </button>
-            ) : null}
-            {status === "authenticated" ? (
-              <div className="flex flex-wrap items-center gap-3">
-                <p className="text-xs text-emerald-600 dark:text-emerald-400">
-                  Signed in as {session.user?.email ?? "account"}.
-                </p>
-                <button
-                  className="rounded-full border border-zinc-200 px-4 py-2 text-xs font-semibold dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-700"
-                  onClick={() => signOut({ callbackUrl: "/account" })}
-                >
-                  Sign out
-                </button>
-              </div>
-            ) : null}
-            {status === "loading" ? (
-              <p className="text-xs text-zinc-500 dark:text-zinc-400">Checking session...</p>
-            ) : null}
-          </div>
-        </section>
-
-        <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
-          <h2 className="text-lg font-semibold">Recent sessions</h2>
-          {recentRooms.length === 0 ? (
-            <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">No recent sessions yet.</p>
+            </>
           ) : (
-            <div className="mt-3 space-y-2 text-sm">
-              {recentRooms.map((room) => (
-                <div key={room.roomId} className="flex items-center justify-between">
-                  <span>{room.name}</span>
-                  <Link className="text-xs text-zinc-500 underline hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-300" href={`/room/${room.roomId}`}>
-                    Open
-                  </Link>
-                </div>
-              ))}
-            </div>
+            <button
+              type="button"
+              className="app-btn app-btn--primary"
+              onClick={() => signIn("google", { callbackUrl: "/account" })}
+            >
+              Continue with Google
+            </button>
           )}
-        </section>
-      </main>
-    </div>
+        </div>
+      </section>
+
+      <section className="app-card p-6">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-base font-semibold">Recent sessions</h2>
+          <Link href="/join" className="app-btn app-btn--ghost h-9 px-4 text-xs">
+            Find a room
+          </Link>
+        </div>
+        {recentRooms.length === 0 ? (
+          <p className="mt-4 text-sm text-[color:var(--foreground-muted)]">
+            No recent sessions yet.
+          </p>
+        ) : (
+          <ul className="mt-4 divide-y app-divider">
+            {recentRooms.map((room) => (
+              <li
+                key={room.roomId}
+                className="flex items-center justify-between gap-3 py-3"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold">{room.name}</p>
+                  <p className="text-xs text-[color:var(--foreground-muted)]">
+                    Invite <span className="font-mono">{room.inviteCode}</span>
+                  </p>
+                </div>
+                <Link
+                  className="app-btn app-btn--ghost h-9 px-4 text-xs"
+                  href={`/room/${room.roomId}?invite=${room.inviteCode}`}
+                >
+                  Open
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </main>
   );
 }

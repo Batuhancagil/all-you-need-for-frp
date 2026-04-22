@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { ok, fail } from "@/server/api";
 import { prisma } from "@/server/db";
+import { resolveRoomParticipantAccess } from "@/server/room-participant-session";
 import {
   parseDiceExpression,
   executeParsedRoll,
@@ -19,12 +20,12 @@ export async function POST(
   const sides = Number(body?.sides ?? 20);
   const count = Number(body?.count ?? 1);
 
-  if (!participantId) {
-    return fail("missing_fields", "participantId is required");
+  const access = await resolveRoomParticipantAccess({ request, roomId, participantId });
+  if ("error" in access) {
+    return access.error;
   }
-
   const participant = await prisma.participant.findFirst({
-    where: { id: participantId, roomId },
+    where: { id: access.participant.id, roomId },
   });
   if (!participant) {
     return fail("participant_not_found", "Participant not found", 404);

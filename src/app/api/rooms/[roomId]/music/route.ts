@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { ok, fail } from "@/server/api";
 import { prisma } from "@/server/db";
+import { resolveRoomParticipantAccess } from "@/server/room-participant-session";
 
 function extractYoutubeVideoId(url: string): string | null {
   const trimmed = url.trim();
@@ -38,15 +39,11 @@ export async function POST(
   const participantId = body?.participantId as string | undefined;
   const url = body?.url as string | undefined;
 
-  if (!participantId) {
-    return fail("missing_fields", "participantId required");
+  const access = await resolveRoomParticipantAccess({ request, roomId, participantId });
+  if ("error" in access) {
+    return access.error;
   }
-
-  const requester = await prisma.participant.findFirst({
-    where: { id: participantId, roomId },
-    select: { role: true },
-  });
-  if (!requester) return fail("participant_not_found", "Participant not found", 404);
+  const requester = access.participant;
 
   const canControl = requester.role === "ADMIN" || requester.role === "GM";
   if (!canControl) {

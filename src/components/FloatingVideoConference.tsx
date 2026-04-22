@@ -12,7 +12,6 @@ import {
   ControlBar,
   FocusLayout,
   FocusLayoutContainer,
-  GridLayout,
   LayoutContextProvider,
   ParticipantTile,
   RoomAudioRenderer,
@@ -51,6 +50,7 @@ export function FloatingVideoConference({
   const lastAutoFocusedScreenShareTrack = React.useRef<TrackReferenceOrPlaceholder | null>(
     null
   );
+  const focusContainerRef = React.useRef<HTMLDivElement | null>(null);
 
   const tracks = useTracks(
     [
@@ -73,6 +73,14 @@ export function FloatingVideoConference({
 
   const focusTrack = usePinnedTracks(layoutContext)?.[0];
   const carouselTracks = tracks.filter((track) => !isEqualTrackRef(track, focusTrack));
+
+  const screenShareKey = React.useMemo(
+    () =>
+      screenShareTracks
+        .map((ref) => `${ref.publication.trackSid}_${ref.publication.isSubscribed}`)
+        .join(),
+    [screenShareTracks]
+  );
 
   React.useEffect(() => {
     if (
@@ -104,13 +112,30 @@ export function FloatingVideoConference({
         layoutContext.pin.dispatch?.({ msg: "set_pin", trackReference: updatedFocusTrack });
       }
     }
-  }, [
-    screenShareTracks
-      .map((ref) => `${ref.publication.trackSid}_${ref.publication.isSubscribed}`)
-      .join(),
-    focusTrack?.publication?.trackSid,
-    tracks,
-  ]);
+    // screenShareKey already encodes the subscribed state per track; avoid joining inline.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screenShareKey, focusTrack?.publication?.trackSid]);
+
+  const requestFocusFullscreen = React.useCallback(() => {
+    const host = focusContainerRef.current;
+    if (!host) return;
+    if (document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => undefined);
+      return;
+    }
+    const video = host.querySelector("video");
+    const target: Element = (video as Element | null) ?? host;
+    const anyTarget = target as Element & {
+      webkitRequestFullscreen?: () => Promise<void> | void;
+    };
+    const request =
+      target.requestFullscreen?.bind(target) ??
+      (anyTarget.webkitRequestFullscreen?.bind(target) as (() => Promise<void>) | undefined);
+    if (request) void request();
+  }, []);
+
+  const tileKey = (tr: TrackReferenceOrPlaceholder) =>
+    `${tr.participant.identity}:${tr.source}:${isTrackReference(tr) ? tr.publication.trackSid : "placeholder"}`;
 
   return (
     <div className="lk-video-conference" {...props}>
@@ -118,19 +143,51 @@ export function FloatingVideoConference({
         <LayoutContextProvider value={layoutContext} onWidgetChange={widgetUpdate}>
           <div className="lk-video-conference-inner">
             {!focusTrack ? (
-              <div className="lk-grid-layout-wrapper">
-                <GridLayout tracks={tracks}>
-                  <ParticipantTile />
-                </GridLayout>
+              <div className="lk-grid-layout-wrapper aynfrp-column-layout">
+                {tracks.map((tr) => (
+                  <ParticipantTile
+                    key={tileKey(tr)}
+                    trackRef={isTrackReference(tr) ? tr : undefined}
+                  />
+                ))}
               </div>
             ) : (
-              <div className="lk-focus-layout-wrapper">
+              <div
+                className="lk-focus-layout-wrapper"
+                ref={focusContainerRef}
+                onDoubleClick={requestFocusFullscreen}
+                style={{ position: "relative" }}
+              >
                 <FocusLayoutContainer>
                   <CarouselLayout tracks={carouselTracks}>
                     <ParticipantTile />
                   </CarouselLayout>
                   {focusTrack && <FocusLayout trackRef={focusTrack} />}
                 </FocusLayoutContainer>
+                <button
+                  type="button"
+                  onClick={requestFocusFullscreen}
+                  className="absolute right-2 top-2 z-30 rounded bg-black/50 p-1.5 text-white hover:bg-black/70"
+                  title="Toggle fullscreen"
+                  aria-label="Toggle fullscreen"
+                  style={{ position: "absolute" }}
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M3 9V3h6" />
+                    <path d="M21 9V3h-6" />
+                    <path d="M3 15v6h6" />
+                    <path d="M21 15v6h-6" />
+                  </svg>
+                </button>
               </div>
             )}
             <ControlBar

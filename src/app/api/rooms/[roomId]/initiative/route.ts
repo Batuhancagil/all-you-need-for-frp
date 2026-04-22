@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { ok, fail } from "@/server/api";
 import { prisma } from "@/server/db";
+import { resolveRoomParticipantAccess } from "@/server/room-participant-session";
 import {
   parseDiceExpression,
   executeParsedRoll,
@@ -62,15 +63,16 @@ export async function POST(
   const entryId = body?.entryId as string | undefined;
   const turnCount = body?.turnCount as number | undefined;
 
-  if (!participantId || !action) {
-    return fail("missing_fields", "participantId and action required");
+  if (!action) {
+    return fail("missing_fields", "action required");
   }
 
-  const requester = await prisma.participant.findFirst({
-    where: { id: participantId, roomId },
-    select: { id: true, role: true },
-  });
-  if (!requester) return fail("participant_not_found", "Participant not found", 404);
+  const access = await resolveRoomParticipantAccess({ request, roomId, participantId });
+  if ("error" in access) {
+    return access.error;
+  }
+  const requester = access.participant;
+  const requesterId = requester.id;
 
   const canManage = requester.role === "ADMIN" || requester.role === "GM";
 
@@ -105,7 +107,7 @@ export async function POST(
       where: { id: entryId, roomId },
     });
     if (!entry) return fail("entry_not_found", "Entry not found", 404);
-    const isOwnEntry = entry.participantId === participantId;
+    const isOwnEntry = entry.participantId === requesterId;
     if (!canManage && !isOwnEntry) return fail("forbidden", "Cannot toggle other entries", 403);
     const updated = await prisma.initiativeEntry.update({
       where: { id: entryId },
@@ -134,7 +136,7 @@ export async function POST(
       nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % entries.length;
     } else {
       const currentEntry = currentIndex >= 0 ? entries[currentIndex] : null;
-      const isMyTurn = currentEntry?.participantId === participantId;
+      const isMyTurn = currentEntry?.participantId === requesterId;
       if (!isMyTurn) return fail("forbidden", "Only GM can advance when it is not your turn", 403);
       nextIndex = (currentIndex + 1) % entries.length;
     }
@@ -176,7 +178,8 @@ export async function POST(
   }
 
   if (action === "add") {
-    const isSelfAdd = targetParticipantId === participantId;
+    const resolvedTargetParticipantId = targetParticipantId || requesterId;
+    const isSelfAdd = resolvedTargetParticipantId === requesterId;
     const isCreatureAdd = !!creatureName?.trim();
     if (!canManage && !isSelfAdd) {
       return fail("forbidden", "Only admin/GM can add creatures; players can add themselves", 403);
@@ -201,7 +204,7 @@ export async function POST(
     const entry = await prisma.initiativeEntry.create({
       data: {
         roomId,
-        participantId: isCreatureAdd ? null : (targetParticipantId || participantId),
+        participantId: isCreatureAdd ? null : resolvedTargetParticipantId,
         creatureName: creatureName?.trim() || null,
         expression: parsed.expression,
         result: total,

@@ -6,8 +6,13 @@
     "node": ">=20.9.0"
   },
   "scripts": {
+    "prisma:generate": "prisma generate",
+    "prisma:fix-runtime": "node scripts/fix-prisma-runtime-path.cjs",
+    "predev": "npm run prisma:generate && npm run prisma:fix-runtime",
     "dev": "next dev",
+    "prebuild": "npm run prisma:generate && npm run prisma:fix-runtime",
     "build": "next build",
+    "prestart": "npm run prisma:generate && npm run prisma:fix-runtime",
     "start": "next start",
     "lint": "eslint"
   },
@@ -22,8 +27,12 @@
     "next": "16.1.6",
     "next-auth": "^4.24.7",
     "nodemailer": "^7.0.13",
+    "prisma": "^6.10.1",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "y-protocols": "^1.0.7",
+    "y-webrtc": "^10.3.0",
+    "yjs": "^13.6.30"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -32,7 +41,6 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
-    "prisma": "^6.10.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

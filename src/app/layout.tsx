@@ -1,11 +1,20 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Providers from "./providers";
 import TopNav from "./top-nav";
 
 export const metadata: Metadata = {
   title: "AllYouNeedForFRP",
-  description: "Voice, video, and chat rooms for tabletop sessions",
+  description: "Voice, video, chat and dice rooms for tabletop sessions",
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#09090b" },
+  ],
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({
@@ -18,11 +27,11 @@ export default function RootLayout({
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){var t=localStorage.getItem("aynfrp:theme")||"light";document.documentElement.classList.toggle("dark",t==="dark");})();`,
+            __html: `(function(){try{var t=localStorage.getItem("aynfrp:theme")||"light";document.documentElement.classList.toggle("dark",t==="dark");}catch(_){}})();`,
           }}
         />
       </head>
-      <body className="antialiased bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+      <body className="app-surface min-h-screen antialiased">
         <Providers>
           <TopNav />
           {children}
